@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # 1. El contenedor de la Base de Datos MySQL
+  db:
+    image: mysql:8.0
+    container_name: giftify_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root # Contraseña para el usuario root
+      MYSQL_DATABASE: giftify_db # Crea la BBDD automáticamente al arrancar
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql # Guarda los datos para que no se borren al apagar Docker
+
+  # 2. El contenedor de phpMyAdmin (Interfaz visual)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: giftify_phpmyadmin
+    restart: always
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "8080:80" # Podrás entrar desde localhost:8080
+    depends_on:
+      - db
+
+volumes:
+  mysql_data:

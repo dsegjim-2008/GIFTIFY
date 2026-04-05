@@ -1,21 +1,22 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
-const db = require('./db'); // Importamos la conexión que acabamos de crear
+const db = require('./db');
 
 const app = express();
 
-// Middlewares fundamentales
-app.use(cors()); // Permite que el frontend (puerto 3000) hable con el backend (puerto 3001)
-app.use(express.json()); // Permite leer datos en formato JSON
+app.use(cors());
+app.use(express.json());
 
-// Ruta de prueba básica
+// Importar y usar las rutas de Spotify
+const spotifyRoutes = require('./routes/spotify');
+app.use('/api/spotify', spotifyRoutes);
+
 app.get('/', (req, res) => {
     res.send('🚀 API de Giftify funcionando correctamente');
 });
 
-// Inicialización del servidor
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-    console.log(`Servidor escuchando en: http://localhost:${PORT}`);
+    console.log(`Servidor escuchando en: http://127.0.0.1:${PORT}`);
 });

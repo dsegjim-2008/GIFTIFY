@@ -9,7 +9,6 @@ const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
 
 // 1. Generar la URL de inicio de sesión para el Frontend
 router.get('/login-url', (req, res) => {
-    // Estos "scopes" son los permisos que le pedimos al usuario (leer su email, controlar el reproductor, etc.)
     const scope = 'streaming user-read-email user-read-private user-library-read user-library-modify user-read-playback-state user-modify-playback-state';
 
     const auth_query_parameters = new URLSearchParams({
@@ -19,10 +18,11 @@ router.get('/login-url', (req, res) => {
         redirect_uri: REDIRECT_URI
     });
 
+    // URL CORREGIDA
     res.json({ url: 'https://accounts.spotify.com/authorize?' + auth_query_parameters.toString() });
 });
 
-// 2. El Callback: Spotify nos devuelve al usuario aquí con un código secreto
+// 2. El Callback: Spotify nos devuelve al usuario aquí
 router.get('/callback', async (req, res) => {
     const code = req.query.code || null;
 
@@ -30,6 +30,7 @@ router.get('/callback', async (req, res) => {
         // Intercambiamos el código por el Token de Acceso
         const response = await axios({
             method: 'post',
+            // URL CORREGIDA
             url: 'https://accounts.spotify.com/api/token',
             data: new URLSearchParams({
                 code: code,
@@ -44,7 +45,8 @@ router.get('/callback', async (req, res) => {
 
         const access_token = response.data.access_token;
 
-        // Le pedimos a Spotify los datos del perfil del usuario (nombre, email, id)
+        // Le pedimos a Spotify los datos del perfil del usuario
+        // URL CORREGIDA
         const userResponse = await axios.get('https://api.spotify.com/v1/me', {
             headers: { 'Authorization': 'Bearer ' + access_token }
         });
@@ -61,7 +63,6 @@ router.get('/callback', async (req, res) => {
                 const insertQuery = 'INSERT INTO users (username, email, password, spotify_id) VALUES (?, ?, ?, ?)';
                 db.query(insertQuery, [spotifyData.display_name, spotifyData.email, 'spotify_oauth', spotifyData.id], (err2) => {
                     if (err2) throw err2;
-                    // Lo devolvemos al frontend con su token
                     res.redirect(`http://127.0.0.1:3000/dashboard?token=${access_token}`);
                 });
             } else {

@@ -77,4 +77,65 @@ router.get('/callback', async (req, res) => {
     }
 });
 
+// --- NUEVAS RUTAS: BUSCADOR Y DISCOGRAFÍA ---
+
+// Función auxiliar: El servidor pide su propio pase temporal a Spotify para poder buscar
+const getSpotifyAppToken = async () => {
+    const response = await axios({
+        method: 'post',
+        url: 'https://accounts.spotify.com/api/token',
+        data: new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+        headers: {
+            'content-type': 'application/x-www-form-urlencoded',
+            'Authorization': 'Basic ' + (Buffer.from(CLIENT_ID + ':' + CLIENT_SECRET).toString('base64'))
+        }
+    });
+    return response.data.access_token;
+};
+
+// 3. Buscar Artistas
+router.get('/search', async (req, res) => {
+    try {
+        const token = await getSpotifyAppToken();
+        const query = req.query.query;
+        
+        const response = await axios.get(`https://api.spotify.com/v1/search?q=${query}&type=artist&limit=8`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        res.json(response.data.artists.items);
+    } catch (error) {
+        console.error("❌ Error buscando artista:", error.message);
+        res.status(500).json({ error: "Error en la búsqueda" });
+    }
+});
+
+// 4. Obtener las canciones principales del artista
+router.get('/artist-tracks', async (req, res) => {
+    try {
+        const token = await getSpotifyAppToken();
+        const artistId = req.query.id;
+        
+        // Pedimos los "Top Tracks" del artista a Spotify
+        const response = await axios.get(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=ES`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        // Filtramos solo los datos que nuestro Frontend necesita
+        const tracks = response.data.tracks.map(t => ({
+            id: t.id,
+            name: t.name,
+            uri: t.uri,
+            image: t.album.images[0]?.url,
+            type: t.album.album_type,
+            release_date: t.album.release_date
+        }));
+        
+        res.json(tracks);
+    } catch (error) {
+        console.error("❌ Error obteniendo canciones:", error.message);
+        res.status(500).json({ error: "Error obteniendo canciones" });
+    }
+});
+
 module.exports = router;

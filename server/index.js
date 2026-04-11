@@ -12,6 +12,9 @@ app.use(express.json());
 const spotifyRoutes = require('./routes/spotify');
 app.use('/api/spotify', spotifyRoutes);
 
+const userRoutes = require('./routes/users');
+app.use('/api/users', userRoutes);
+
 app.get('/', (req, res) => {
     res.send('🚀 API de Giftify funcionando correctamente');
 });

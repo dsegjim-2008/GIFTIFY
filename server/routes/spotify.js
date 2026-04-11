@@ -7,7 +7,17 @@ const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
 
-// 1. Generar la URL de inicio de sesión para el Frontend
+const SPOTIFY_API = 'https://api.spotify.com/v1';
+const SPOTIFY_AUTH = 'https://accounts.spotify.com';
+
+// Helper: extrae el token del header Authorization enviado por el frontend
+const getTokenFromHeader = (req) => {
+    const auth = req.headers['authorization'];
+    if (!auth || !auth.startsWith('Bearer ')) return null;
+    return auth.split(' ')[1];
+};
+
+// 1. Generar la URL de inicio de sesión
 router.get('/login-url', (req, res) => {
     const scope = 'streaming user-read-email user-read-private user-library-read user-library-modify user-read-playback-state user-modify-playback-state';
 
@@ -18,20 +28,17 @@ router.get('/login-url', (req, res) => {
         redirect_uri: REDIRECT_URI
     });
 
-    // URL CORREGIDA
-    res.json({ url: 'https://accounts.spotify.com/authorize?' + auth_query_parameters.toString() });
+    res.json({ url: SPOTIFY_AUTH + '/authorize?' + auth_query_parameters.toString() });
 });
 
-// 2. El Callback: Spotify nos devuelve al usuario aquí
+// 2. El Callback y guardado en Base de Datos
 router.get('/callback', async (req, res) => {
     const code = req.query.code || null;
 
     try {
-        // Intercambiamos el código por el Token de Acceso
         const response = await axios({
             method: 'post',
-            // URL CORREGIDA
-            url: 'https://accounts.spotify.com/api/token',
+            url: SPOTIFY_AUTH + '/api/token',
             data: new URLSearchParams({
                 code: code,
                 redirect_uri: REDIRECT_URI,
@@ -44,97 +51,85 @@ router.get('/callback', async (req, res) => {
         });
 
         const access_token = response.data.access_token;
+        const refresh_token = response.data.refresh_token;
+        const expires_at = Date.now() + 3600000;
 
-        // Le pedimos a Spotify los datos del perfil del usuario
-        // URL CORREGIDA
-        const userResponse = await axios.get('https://api.spotify.com/v1/me', {
+        const userResponse = await axios.get(SPOTIFY_API + '/me', {
             headers: { 'Authorization': 'Bearer ' + access_token }
         });
 
         const spotifyData = userResponse.data;
 
-        // Comprobamos si el usuario ya existe en nuestra base de datos
         const query = 'SELECT * FROM users WHERE spotify_id = ?';
         db.query(query, [spotifyData.id], (err, results) => {
             if (err) throw err;
 
             if (results.length === 0) {
-                // Si no existe, lo registramos automáticamente
-                const insertQuery = 'INSERT INTO users (username, email, password, spotify_id) VALUES (?, ?, ?, ?)';
-                db.query(insertQuery, [spotifyData.display_name, spotifyData.email, 'spotify_oauth', spotifyData.id], (err2) => {
+                const insertQuery = 'INSERT INTO users (username, email, password, spotify_id, access_token, refresh_token, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)';
+                db.query(insertQuery, [spotifyData.display_name, spotifyData.email, 'spotify_oauth', spotifyData.id, access_token, refresh_token, expires_at], (err2) => {
                     if (err2) throw err2;
-                    res.redirect(`http://127.0.0.1:3000/dashboard?token=${access_token}`);
+                    res.redirect(`http://127.0.0.1:3000/dashboard?token=${access_token}&spotify_id=${spotifyData.id}`);
                 });
             } else {
-                // Si ya existe, simplemente lo devolvemos al frontend con su token
-                res.redirect(`http://127.0.0.1:3000/dashboard?token=${access_token}`);
+                const updateQuery = 'UPDATE users SET access_token = ?, refresh_token = ?, expires_at = ? WHERE spotify_id = ?';
+                db.query(updateQuery, [access_token, refresh_token, expires_at, spotifyData.id], (err2) => {
+                    if (err2) throw err2;
+                    res.redirect(`http://127.0.0.1:3000/dashboard?token=${access_token}&spotify_id=${spotifyData.id}`);
+                });
             }
         });
 
     } catch (error) {
-        console.error("❌ Error en autenticación con Spotify:", error.response ? error.response.data : error.message);
+        console.error("❌ Error en autenticación:", error.message);
         res.redirect('http://127.0.0.1:3000/?error=auth_failed');
     }
 });
 
-// --- NUEVAS RUTAS: BUSCADOR Y DISCOGRAFÍA ---
-
-// Función auxiliar: El servidor pide su propio pase temporal a Spotify para poder buscar
-const getSpotifyAppToken = async () => {
-    const response = await axios({
-        method: 'post',
-        url: 'https://accounts.spotify.com/api/token',
-        data: new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
-        headers: {
-            'content-type': 'application/x-www-form-urlencoded',
-            'Authorization': 'Basic ' + (Buffer.from(CLIENT_ID + ':' + CLIENT_SECRET).toString('base64'))
-        }
-    });
-    return response.data.access_token;
-};
-
-// 3. Buscar Artistas
+// 3. Buscar Artistas — usa el token del frontend directamente
 router.get('/search', async (req, res) => {
     try {
-        const token = await getSpotifyAppToken();
+        const token = getTokenFromHeader(req);
+        if (!token) return res.status(401).json({ error: "Token no encontrado en el header" });
+
         const query = req.query.query;
-        
-        const response = await axios.get(`https://api.spotify.com/v1/search?q=${query}&type=artist&limit=8`, {
+
+        const response = await axios.get(SPOTIFY_API + '/search?q=' + query + '&type=artist&limit=8', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        
+
         res.json(response.data.artists.items);
     } catch (error) {
-        console.error("❌ Error buscando artista:", error.message);
+        console.error("❌ Error buscando artista:", error.response?.data || error.message);
         res.status(500).json({ error: "Error en la búsqueda" });
     }
 });
 
-// 4. Obtener las canciones principales del artista
+// 4. Obtener discografía del artista — usa el token del frontend directamente
 router.get('/artist-tracks', async (req, res) => {
     try {
-        const token = await getSpotifyAppToken();
+        const token = getTokenFromHeader(req);
+        if (!token) return res.status(401).json({ error: "Token no encontrado en el header" });
+
         const artistId = req.query.id;
-        
-        // Pedimos los "Top Tracks" del artista a Spotify
-        const response = await axios.get(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=ES`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        // Filtramos solo los datos que nuestro Frontend necesita
-        const tracks = response.data.tracks.map(t => ({
-            id: t.id,
-            name: t.name,
-            uri: t.uri,
-            image: t.album.images[0]?.url,
-            type: t.album.album_type,
-            release_date: t.album.release_date
+
+        const response = await axios.get(
+            SPOTIFY_API + '/artists/' + artistId + '/albums?include_groups=album%2Csingle&market=ES&limit=10',
+            { headers: { 'Authorization': `Bearer ${token}` } }
+        );
+
+        const albums = response.data.items.map(album => ({
+            id: album.id,
+            name: album.name,
+            uri: album.uri,
+            image: album.images[0]?.url,
+            type: album.album_type === 'single' ? 'Single' : 'Álbum',
+            release_date: album.release_date
         }));
-        
-        res.json(tracks);
+
+        res.json(albums);
     } catch (error) {
-        console.error("❌ Error obteniendo canciones:", error.message);
-        res.status(500).json({ error: "Error obteniendo canciones" });
+        console.error("❌ Error obteniendo discografía:", error.response?.data || error.message);
+        res.status(500).json({ error: "Error obteniendo discografía" });
     }
 });
 

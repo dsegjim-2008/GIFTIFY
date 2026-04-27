@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import axios from 'axios';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import Sidebar from './components/Sidebar';
+import './App.css';
 
 function App() {
     const [spotifyToken, setSpotifyToken] = useState(null);
     const [spotifyId, setSpotifyId] = useState(null);
     const [user, setUser] = useState({ username: 'Cargando...', points: 0 }); 
+    const [currentView, setCurrentView] = useState('inicio'); // CONTROLADOR DE VISTAS
     
     const navigate = useNavigate();
     const location = useLocation();
@@ -33,12 +35,22 @@ function App() {
 
     return (
         <div className="App">
-            <Routes>
-                <Route path="/" element={<Login />} />
-                <Route path="/dashboard" element={
-                    <Dashboard user={user} setUser={setUser} spotifyToken={spotifyToken} spotifyId={spotifyId} />
-                } />
-            </Routes>
+            {spotifyToken && <Sidebar user={user} spotifyToken={spotifyToken} setView={setCurrentView} activeView={currentView} />}
+            <main className={spotifyToken ? "app-main with-sidebar" : "app-main"}>
+                <Routes>
+                    <Route path="/" element={<Login />} />
+                    <Route path="/dashboard" element={
+                        <Dashboard 
+                            user={user} 
+                            setUser={setUser} 
+                            spotifyToken={spotifyToken} 
+                            spotifyId={spotifyId} 
+                            view={currentView}
+                            setView={setCurrentView}
+                        />
+                    } />
+                </Routes>
+            </main>
         </div>
     );
 }

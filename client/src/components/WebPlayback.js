@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { SkipBack, Play, Pause, SkipForward, Volume2, Music } from 'lucide-react';
+import './WebPlayback.css';
 
 const defaultTrack = {
     name: "Listo para reproducir",
@@ -19,12 +21,6 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId }) {
     const scriptLoaded = useRef(false);
     const SPOTIFY_API = 'https://api.spotify.com/v1';
 
-    // Log para verificar props
-    useEffect(() => {
-        console.log("🎛️ WebPlayback montado con spotifyId:", spotifyId, "playingArtist:", playingArtist);
-    }, [spotifyId, playingArtist]);
-
-    // 1. Inicializar SDK
     useEffect(() => {
         if (scriptLoaded.current) return;
         scriptLoaded.current = true;
@@ -42,7 +38,6 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId }) {
             setPlayerInstance(player);
 
             player.addListener('ready', ({ device_id }) => {
-                console.log('✅ SDK Spotify Listo. Device ID:', device_id);
                 setDeviceId(device_id);
                 axios.put(SPOTIFY_API + '/me/player', {
                     device_ids: [device_id],
@@ -58,14 +53,12 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId }) {
                 setPosition(state.position);
                 player.getVolume().then(v => setVolume(v));
                 setActive(true);
-                console.log("🎵 Estado cambiado: reproduciendo =", !state.paused);
             });
             player.connect();
         };
         return () => { if (playerInstance) playerInstance.disconnect(); };
     }, [token]);
 
-    // 2. Reproducción automática
     useEffect(() => {
         if (!deviceId || !trackUri) return;
         const playSong = async () => {
@@ -74,20 +67,16 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId }) {
                 await axios.put(SPOTIFY_API + '/me/player/play?device_id=' + deviceId, body, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                console.log("▶️ Reproduciendo URI:", trackUri);
             } catch (err) {
-                console.error("❌ Error reproduciendo:", err.response?.data || err.message);
+                console.error("Error reproduciendo:", err);
             }
         };
         playSong();
     }, [deviceId, trackUri, token]);
 
-    // 3. PUNTOS: solo si todo está listo
     useEffect(() => {
-        console.log("🔄 useEffect puntos - is_active:", is_active, "is_paused:", is_paused, "playingArtist:", playingArtist, "spotifyId:", spotifyId);
         if (!is_active || is_paused || !playingArtist || !spotifyId) return;
 
-        console.log("🎁 Iniciando intervalo de puntos para", playingArtist.name);
         const interval = setInterval(() => {
             axios.post('http://127.0.0.1:3001/api/users/earn', {
                 artistId: playingArtist.id,
@@ -97,15 +86,13 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId }) {
             })
             .then(res => {
                 if (setUser) setUser(prev => ({ ...prev, points: res.data.newPoints }));
-                console.log("💰 Puntos actualizados:", res.data.newPoints);
             })
-            .catch(err => console.error("❌ Error earn:", err.response?.data || err.message));
+            .catch(err => console.error("Error earn:", err));
         }, 10000);
 
         return () => clearInterval(interval);
     }, [is_active, is_paused, playingArtist, setUser, token, spotifyId]);
 
-    // Timer visual
     useEffect(() => {
         if (!is_paused && is_active) {
             const interval = setInterval(() => {
@@ -122,53 +109,63 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId }) {
         return `${m}:${s < 10 ? '0' : ''}${s}`;
     };
 
-    if (!deviceId) return <div style={containerStyle}><div style={{ color: '#fff' }}>Conectando con Spotify...</div></div>;
+    if (!deviceId) return (
+        <div className="player-loading">
+            <Music size={24} style={{marginRight: '10px'}} />
+            <span>Conectando con Spotify...</span>
+        </div>
+    );
 
     return (
-        <div style={containerStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', width: '30%' }}>
-                <img src={current_track?.album?.images[0]?.url || "https://via.placeholder.com/50"} alt="" style={{ height: '56px', width: '56px', marginRight: '15px', borderRadius: '4px' }} />
-                <div>
-                    <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#fff' }}>{current_track?.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#b3b3b3' }}>{current_track?.artists?.[0]?.name}</div>
+        <div className="player-container">
+            <div className="player-track-info">
+                <img src={current_track?.album?.images[0]?.url || "https://via.placeholder.com/150"} alt="Álbum" className="player-album-art" />
+                <div className="player-track-details">
+                    <div className="player-track-name">{current_track?.name}</div>
+                    <div className="player-artist-name">{current_track?.artists?.[0]?.name}</div>
                 </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '40%' }}>
-                <div style={{ display: 'flex', gap: '25px', alignItems: 'center', marginBottom: '8px' }}>
-                    <button className="btn-control side-btn" onClick={() => playerInstance?.previousTrack()}>⏮</button>
-                    <button className="btn-control play-btn" onClick={() => playerInstance?.togglePlay()}>{is_paused ? "▶" : "⏸"}</button>
-                    <button className="btn-control side-btn" onClick={() => playerInstance?.nextTrack()}>⏭</button>
+
+            <div className="player-controls">
+                <div className="player-buttons">
+                    <button className="btn-control btn-side" onClick={() => playerInstance?.previousTrack()}>
+                        <SkipBack size={24} />
+                    </button>
+                    <button className="btn-control btn-play" onClick={() => playerInstance?.togglePlay()}>
+                        {is_paused ? <Play size={24} fill="currentColor" style={{marginLeft:'4px'}} /> : <Pause size={24} fill="currentColor" />}
+                    </button>
+                    <button className="btn-control btn-side" onClick={() => playerInstance?.nextTrack()}>
+                        <SkipForward size={24} />
+                    </button>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', fontSize: '0.75rem', color: '#b3b3b3' }}>
-                    <span>{formatTime(position)}</span>
-                    <input type="range" min={0} max={duration || 100} value={position} onChange={(e) => { const val = Number(e.target.value); setPosition(val); playerInstance?.seek(val); }} className="progress-bar" style={{ width: '100%', cursor: 'pointer' }} />
-                    <span>{formatTime(duration)}</span>
+
+                <div className="player-progress-section">
+                    <span className="player-time">{formatTime(position)}</span>
+                    <input type="range" min={0} max={duration || 100} value={position}
+                        onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setPosition(val);
+                            playerInstance?.seek(val);
+                        }}
+                        className="player-progress-bar"
+                    />
+                    <span className="player-time">{formatTime(duration)}</span>
                 </div>
             </div>
-            <div style={{ width: '30%', display: 'flex', justifyContent: 'flex-end', paddingRight: '20px', gap: '10px' }}>
-                <span>🔊</span>
-                <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(e) => { const val = Number(e.target.value); setVolume(val); playerInstance?.setVolume(val); }} style={{ width: '100px' }} />
+
+            <div className="player-volume-section">
+                <Volume2 size={20} className="volume-icon" />
+                <input type="range" min={0} max={1} step={0.01} value={volume}
+                    onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setVolume(val);
+                        playerInstance?.setVolume(val);
+                    }}
+                    className="player-volume-bar"
+                />
             </div>
-            <style>{`
-                .btn-control { background: none; border: none; cursor: pointer; }
-                .side-btn { color: #b3b3b3; font-size: 1.4rem; }
-                .side-btn:hover { color: #fff; }
-                .play-btn { background: #fff; color: #000; border-radius: 50%; width: 38px; height: 38px; font-size: 1.2rem; }
-                .play-btn:hover { background: #1DB954; color: #fff; }
-                input[type=range] { -webkit-appearance: none; background: transparent; }
-                input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 12px; width: 12px; border-radius: 50%; background: #fff; cursor: pointer; margin-top: -4px; }
-                input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #4f4f4f; border-radius: 2px; }
-                .progress-bar:hover::-webkit-slider-runnable-track { background: #1DB954; }
-            `}</style>
         </div>
     );
 }
-
-const containerStyle = {
-    position: 'fixed', bottom: 0, left: 0, width: '100%', height: '90px',
-    backgroundColor: '#181818', borderTop: '1px solid #282828',
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '0 20px', color: 'white', zIndex: 9999
-};
 
 export default WebPlayback;

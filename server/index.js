@@ -1,14 +1,18 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path'); // NUEVO: Para manejar rutas de archivos
 require('dotenv').config();
 const db = require('./db');
+const initDatabase = require('./initDb'); 
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// Importar y usar las rutas de Spotify
+// NUEVO: Hacemos que la carpeta "uploads" sea pública para poder ver las fotos
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 const spotifyRoutes = require('./routes/spotify');
 app.use('/api/spotify', spotifyRoutes);
 
@@ -20,6 +24,8 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+
+app.listen(PORT, async () => {
     console.log(`Servidor escuchando en: http://127.0.0.1:${PORT}`);
+    await initDatabase();
 });

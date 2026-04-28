@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path'); // NUEVO: Para manejar rutas de archivos
-require('dotenv').config();
+require('dotenv').config({ path: __dirname + '/.env' });
 const db = require('./db');
 const initDatabase = require('./initDb'); 
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Swal from 'sweetalert2';
-import { Search, Plus, Check, Play, Star, FolderPlus, Disc3, Music, UserPlus, ArrowLeft, ListMusic, Trash2, Pencil } from 'lucide-react';
+import { Search, Plus, Check, Play, Star, FolderPlus, Disc3, Music, UserPlus, ArrowLeft, Trash2, Pencil, ShoppingBag, Clock, ListMusic } from 'lucide-react';
 import WebPlayback from '../components/WebPlayback';
 import './Dashboard.css';
 
@@ -27,6 +27,10 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
     
     const [selectedPlaylist, setSelectedPlaylist] = useState(null);
     const [playlistSongs, setPlaylistSongs] = useState([]);
+    const [rewards, setRewards] = useState([]);
+
+    const [homeFeed, setHomeFeed] = useState(null);
+    const [selectedDynamicList, setSelectedDynamicList] = useState(null);
 
     const config = { headers: { Authorization: `Bearer ${spotifyToken}`, 'X-Spotify-Id': spotifyId } };
 
@@ -35,12 +39,23 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
             axios.get('http://127.0.0.1:3001/api/users/profile', config).then(res => setUser(res.data));
             axios.get('http://127.0.0.1:3001/api/users/playlists', config).then(res => setMyPlaylists(res.data));
             axios.get('http://127.0.0.1:3001/api/users/followed-artists', config).then(res => setFollowedArtists(res.data));
+            axios.get('http://127.0.0.1:3001/api/users/rewards', config).then(res => setRewards(res.data));
         }
     }, [spotifyId, spotifyToken, view]); 
 
+    useEffect(() => {
+        if (spotifyToken && view === 'inicio' && !searchQuery && !selectedArtist) {
+            axios.get('http://127.0.0.1:3001/api/spotify/home-feed', config)
+                 .then(res => setHomeFeed(res.data))
+                 .catch(err => console.error(err));
+        }
+    }, [spotifyToken, view, searchQuery, selectedArtist]);
+
+    useEffect(() => { setSelectedDynamicList(null); }, [view, searchQuery]);
+
     const handleSearch = async (e) => {
         e.preventDefault();
-        if (!searchQuery) return;
+        if (!searchQuery) { setSearchResults([]); return; }
         setView('inicio');
         try {
             const res = await axios.get(`http://127.0.0.1:3001/api/spotify/search?query=${searchQuery}`, config);
@@ -48,6 +63,12 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
             setSelectedArtist(null);
             setSelectedAlbum(null);
         } catch (error) { console.error(error); }
+    };
+
+    const clearSearch = () => {
+        setSearchQuery("");
+        setSearchResults([]);
+        setSelectedArtist(null);
     };
 
     const selectArtist = async (artist) => {
@@ -73,7 +94,7 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
         try {
             const res = await axios.get(`http://127.0.0.1:3001/api/spotify/album-tracks?id=${album.id}`, config);
             setAlbumTracks(res.data);
-        } catch (error) { console.error("Error cargando canciones", error); } 
+        } catch (error) { console.error(error); } 
         finally { setLoading(false); }
     };
 
@@ -85,7 +106,6 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
         setFollowedArtists(fresh.data);
     };
 
-    // --- PLAYLISTS: CREAR CON IMAGEN LOCAL ---
     const createPlaylist = async () => {
         const { value: formValues } = await Swal.fire({
             title: 'Crear nueva Lista',
@@ -112,15 +132,10 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
 
         if (formValues) {
             try {
-                // Usamos FormData en lugar de JSON para poder enviar el archivo al servidor
                 const formData = new FormData();
                 formData.append('name', formValues.name);
                 if (formValues.file) formData.append('image', formValues.file);
-
-                await axios.post('http://127.0.0.1:3001/api/users/playlists', formData, {
-                    headers: { ...config.headers, 'Content-Type': 'multipart/form-data' }
-                });
-                
+                await axios.post('http://127.0.0.1:3001/api/users/playlists', formData, { headers: { ...config.headers, 'Content-Type': 'multipart/form-data' } });
                 const res = await axios.get('http://127.0.0.1:3001/api/users/playlists', config);
                 setMyPlaylists(res.data);
                 Swal.fire({ title: '¡Creada!', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
@@ -128,7 +143,6 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
         }
     };
 
-    // --- PLAYLISTS: EDITAR CON IMAGEN LOCAL ---
     const editPlaylist = async () => {
         const { value: formValues } = await Swal.fire({
             title: 'Editar Lista',
@@ -158,15 +172,10 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
                 const formData = new FormData();
                 formData.append('name', formValues.name);
                 if (formValues.file) formData.append('image', formValues.file);
-
-                const res = await axios.put(`http://127.0.0.1:3001/api/users/playlists/${selectedPlaylist.id}`, formData, {
-                    headers: { ...config.headers, 'Content-Type': 'multipart/form-data' }
-                });
-                
-                setSelectedPlaylist(res.data); // Actualiza la cabecera actual
+                const res = await axios.put(`http://127.0.0.1:3001/api/users/playlists/${selectedPlaylist.id}`, formData, { headers: { ...config.headers, 'Content-Type': 'multipart/form-data' } });
+                setSelectedPlaylist(res.data);
                 const freshPlaylists = await axios.get('http://127.0.0.1:3001/api/users/playlists', config);
-                setMyPlaylists(freshPlaylists.data); // Actualiza las tarjetas
-                
+                setMyPlaylists(freshPlaylists.data);
                 Swal.fire({ title: '¡Actualizada!', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
             } catch(e) { console.error(e); }
         }
@@ -186,7 +195,7 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
         try {
             await axios.post('http://127.0.0.1:3001/api/users/playlists/add-song', { playlistId, track }, config);
             setShowPlaylistModal(null);
-            Swal.fire({ title: 'Añadida correctamente', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
+            Swal.fire({ title: 'Añadida', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
         } catch(e) { console.error(e); }
     };
 
@@ -194,14 +203,29 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
         try {
             await axios.delete(`http://127.0.0.1:3001/api/users/playlists/remove-song`, { data: { playlistId, trackId }, ...config });
             setPlaylistSongs(prev => prev.filter(t => t.spotify_track_id !== trackId));
-            Swal.fire({ title: 'Canción eliminada', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
+            Swal.fire({ title: 'Eliminada', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
         } catch(e) { console.error(e); }
     };
 
-    const playContent = (uri) => {
-        if (!spotifyToken) return Swal.fire({ title: 'Spotify Desconectado', text: 'Necesitas iniciar sesión para reproducir canciones.', icon: 'warning', background: '#1a1f3a', color: '#fff', confirmButtonColor: '#1DB954' });
+    const redeemReward = async (reward) => {
+        if (user.points < reward.point_cost) {
+            return Swal.fire({ title: 'Puntos insuficientes', text: `Necesitas ${reward.point_cost} puntos.`, icon: 'error', background: '#1a1f3a', color: '#fff', confirmButtonColor: '#1DB954' });
+        }
+        const confirm = await Swal.fire({ title: '¿Confirmar canje?', text: `Vas a gastar ${reward.point_cost} puntos.`, icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, canjear', cancelButtonText: 'Cancelar', background: '#1a1f3a', color: '#fff', confirmButtonColor: '#1DB954', cancelButtonColor: '#d33' });
+        if (confirm.isConfirmed) {
+            try {
+                const res = await axios.post('http://127.0.0.1:3001/api/users/redeem', { rewardId: reward.id, cost: reward.point_cost }, config);
+                setUser(prev => ({ ...prev, points: res.data.newPoints }));
+                Swal.fire({ title: '¡Canje exitoso!', icon: 'success', background: '#1a1f3a', color: '#fff', confirmButtonColor: '#1DB954' });
+            } catch (error) { Swal.fire({ title: 'Error', icon: 'error', background: '#1a1f3a', color: '#fff' }); }
+        }
+    };
+
+    const playContent = (uri, item = null) => {
+        if (!spotifyToken) return Swal.fire({ title: 'Spotify Desconectado', icon: 'warning', background: '#1a1f3a', color: '#fff', confirmButtonColor: '#1DB954' });
         setCurrentUri(uri);
-        if (selectedArtist) setPlayingArtistData({ id: selectedArtist.id, name: selectedArtist.name });
+        if (item && item.artist_name) setPlayingArtistData({ id: item.artist_name, name: item.artist_name });
+        else if (selectedArtist) setPlayingArtistData({ id: selectedArtist.id, name: selectedArtist.name });
     };
 
     const formatDuration = (ms) => {
@@ -214,6 +238,31 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
     const currentList = activeTab === 'albums' ? albums : activeTab === 'eps' ? eps : singles;
 
     const renderContent = () => {
+        if (view === 'recompensas') {
+            return (
+                <div className="results-section">
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '20px'}}>
+                        <h2><ShoppingBag size={24} style={{verticalAlign: 'middle', marginRight: '10px'}}/> Tienda de Recompensas</h2>
+                        <div style={{background:'var(--card-bg)', padding:'10px 20px', borderRadius:'10px', border:'1px solid var(--border-color)'}}>
+                            <span style={{fontSize:'1.2rem', fontWeight:'bold', color:'var(--primary-yellow)'}}><Star fill="currentColor" size={16}/> {user?.points || 0} pts</span>
+                        </div>
+                    </div>
+                    <div className="grid-container" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))'}}>
+                        {rewards.map(reward => (
+                            <div key={reward.id} className="artist-card" style={{cursor: 'default', display: 'flex', flexDirection: 'column'}}>
+                                <img src={reward.photo_url} alt={reward.name} style={{width:'100%', height:'150px', objectFit:'cover', borderRadius: '8px', marginBottom: '10px'}} />
+                                <h3>{reward.name}</h3>
+                                <p style={{fontSize:'0.8rem', color:'var(--text-secondary)', flex: 1, marginBottom: '10px'}}>{reward.description}</p>
+                                <button className="track-play-button" style={{width:'100%', background: user?.points >= reward.point_cost ? 'var(--primary-cyan)' : '#333', cursor: user?.points >= reward.point_cost ? 'pointer' : 'not-allowed'}} onClick={() => redeemReward(reward)}>
+                                    Canjear ({reward.point_cost} pts)
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
         if (view === 'artistas') {
             return (
                 <div className="results-section">
@@ -237,16 +286,10 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
                         <div className="artist-header">
                             <img src={selectedPlaylist.photo_url} className="artist-header-image" style={{borderRadius: '8px', width: '120px', height: '120px'}} alt="" />
                             <div className="artist-header-info">
-                                <h3 style={{fontSize: '2rem'}}>{selectedPlaylist.name}</h3>
-                                <p>{playlistSongs.length} canciones en esta lista</p>
-                                
-                                {/* BOTÓN DE EDITAR (No se muestra en Favoritos) */}
+                                <h3>{selectedPlaylist.name}</h3>
+                                <p>{playlistSongs.length} canciones</p>
                                 {!selectedPlaylist.is_favorites_type && (
-                                    <button 
-                                        className="back-button" 
-                                        onClick={editPlaylist}
-                                        style={{marginTop:'10px', display:'flex', alignItems:'center', gap:'6px', padding: '6px 12px'}}
-                                    >
+                                    <button className="back-button" onClick={editPlaylist} style={{marginTop:'10px', display:'flex', alignItems:'center', gap:'6px', padding: '6px 12px'}}>
                                         <Pencil size={14}/> Editar Lista
                                     </button>
                                 )}
@@ -255,10 +298,8 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
                         <button className="back-button" style={{display:'flex', alignItems:'center', gap:'6px', marginBottom: '20px'}} onClick={() => setSelectedPlaylist(null)}>
                             <ArrowLeft size={16} /> Volver a Tus Listas
                         </button>
-
                         {loading ? <div className="loading-spinner"></div> : (
                             <div className="tracklist">
-                                {playlistSongs.length === 0 && <p style={{ color: '#999', padding: '20px', textAlign: 'center' }}>Esta lista está vacía.</p>}
                                 {playlistSongs.map((track, index) => (
                                     <div key={track.id} className="track-item">
                                         <span style={{ width: '30px', textAlign: 'center', color: '#bbb' }}>{index + 1}</span>
@@ -267,8 +308,7 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
                                             <div className="track-name">{track.track_name}</div>
                                             <div className="track-artist">{track.artist_name}</div>
                                         </div>
-                                        <button className="track-play-button" style={{background:'rgba(255, 0, 0, 0.1)', color:'#ff4d4d', border:'1px solid #ff4d4d', display:'flex', alignItems:'center', gap:'4px'}} 
-                                            onClick={() => removeFromPlaylist(selectedPlaylist.id, track.spotify_track_id)}>
+                                        <button className="track-play-button" style={{background:'rgba(255, 0, 0, 0.1)', color:'#ff4d4d', border:'1px solid #ff4d4d', display:'flex', alignItems:'center', gap:'4px'}} onClick={() => removeFromPlaylist(selectedPlaylist.id, track.spotify_track_id)}>
                                             <Trash2 size={14}/> Quitar
                                         </button>
                                         <button className="track-play-button" style={{background:'#1DB954', display:'flex', alignItems:'center', gap:'4px'}} onClick={() => playContent(`spotify:track:${track.spotify_track_id}`)}>
@@ -302,11 +342,98 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
             );
         }
 
+        if (view === 'inicio' && selectedDynamicList) {
+            return (
+                <div className="search-section">
+                    <div className="artist-header">
+                        <div className="dynamic-header-mosaic">
+                            {selectedDynamicList.images.map((img, i) => <img key={i} src={img} alt=""/>)}
+                        </div>
+                        <div className="artist-header-info" style={{marginLeft: '20px'}}>
+                            <h3>{selectedDynamicList.title}</h3>
+                            <p style={{color: 'var(--text-secondary)'}}>{selectedDynamicList.subtitle}</p>
+                            <p style={{marginTop:'5px', color:'var(--text-secondary)', fontSize: '0.9rem'}}>{selectedDynamicList.tracks.length} canciones</p>
+                        </div>
+                        <button className="track-play-button" style={{ marginLeft: 'auto', background: '#1DB954', padding: '12px 24px', display:'flex', alignItems:'center', gap:'6px' }} onClick={() => playContent(selectedDynamicList.tracks[0]?.uri)}>
+                            <Play size={16} fill="currentColor" /> Reproducir todo
+                        </button>
+                    </div>
+                    <button className="back-button" style={{display:'flex', alignItems:'center', gap:'6px', marginBottom: '20px'}} onClick={() => setSelectedDynamicList(null)}>
+                        <ArrowLeft size={16} /> Volver a Inicio
+                    </button>
+
+                    <div className="tracklist">
+                        {selectedDynamicList.tracks.map((track, index) => (
+                            <div key={index} className="track-item">
+                                <span style={{ width: '30px', textAlign: 'center', color: '#bbb' }}>{index + 1}</span>
+                                <img src={track.image_url} style={{width: '40px', height: '40px', borderRadius: '4px'}} alt=""/>
+                                <div className="track-info">
+                                    <div className="track-name">{track.track_name}</div>
+                                    <div className="track-artist">{track.artist_name}</div>
+                                </div>
+                                <button className="track-play-button" style={{background:'#6B1FB5', display:'flex', alignItems:'center', gap:'4px'}} 
+                                    onClick={() => setShowPlaylistModal({id: track.spotify_track_id, name: track.track_name, artist: track.artist_name, image: track.image_url, duration_ms: track.duration_ms || 0})}>
+                                    <Plus size={14}/> Añadir
+                                </button>
+                                <button className="track-play-button" style={{background:'#1DB954', display:'flex', alignItems:'center', gap:'4px'}} onClick={() => playContent(track.uri, {artist_name: track.artist_name})}>
+                                    <Play size={14} fill="currentColor" /> Play
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        if (view === 'inicio' && !searchQuery && !selectedArtist && homeFeed) {
+            return (
+                <div className="home-feed-wrapper">
+                    {homeFeed.recentlyPlayed.length > 0 && (
+                        <div className="shelf-section">
+                            <h2 className="shelf-title"><Clock size={22} color="var(--primary-cyan)" /> Recientemente escuchado</h2>
+                            <div className="horizontal-scroll">
+                                {homeFeed.recentlyPlayed.map(item => (
+                                    <div key={item.id} className="horizontal-card" onClick={() => playContent(item.uri, {artist_name: item.artist})}>
+                                        <div className="horizontal-image-container">
+                                            <img src={item.image} className="horizontal-image" alt="" />
+                                            <div className="play-overlay"><Play fill="currentColor" size={24} /></div>
+                                        </div>
+                                        <div className="horizontal-title">{item.name}</div>
+                                        <div className="horizontal-subtitle">{item.artist}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    <div className="dynamic-mixes-container">
+                        {homeFeed.mixRelacionados && homeFeed.mixRelacionados.tracks.length > 0 && (
+                            <div className="dynamic-mix-box mix-box" onClick={() => setSelectedDynamicList(homeFeed.mixRelacionados)}>
+                                <div className="dynamic-mix-title">{homeFeed.mixRelacionados.title}</div>
+                                <div className="dynamic-mix-subtitle">{homeFeed.mixRelacionados.subtitle}</div>
+                                <div className="dynamic-mix-images">
+                                    {homeFeed.mixRelacionados.images.map((img, i) => <img key={i} src={img} alt="" />)}
+                                </div>
+                            </div>
+                        )}
+                        {homeFeed.radarNovedades && homeFeed.radarNovedades.tracks.length > 0 && (
+                            <div className="dynamic-mix-box radar-box" onClick={() => setSelectedDynamicList(homeFeed.radarNovedades)}>
+                                <div className="dynamic-mix-title">{homeFeed.radarNovedades.title}</div>
+                                <div className="dynamic-mix-subtitle">{homeFeed.radarNovedades.subtitle}</div>
+                                <div className="dynamic-mix-images">
+                                    {homeFeed.radarNovedades.images.map((img, i) => <img key={i} src={img} alt="" />)}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <>
-                {!selectedArtist && searchResults.length > 0 && (
+                {searchQuery && !selectedArtist && searchResults.length > 0 && (
                     <div className="results-section">
-                        <h2>Resultados</h2>
+                        <h2>Resultados para "{searchQuery}"</h2>
                         <div className="grid-container">
                             {searchResults.map(artist => (
                                 <div key={artist.id} className="artist-card" onClick={() => selectArtist(artist)}>
@@ -328,21 +455,15 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
                                     {isFollowing ? <><Check size={16}/> Siguiendo</> : <><UserPlus size={16}/> Seguir Artista</>}
                                 </button>
                             </div>
-                            <button className="back-button" style={{marginLeft:'auto', display:'flex', alignItems:'center', gap:'6px'}} onClick={() => setSelectedArtist(null)}>
-                                <ArrowLeft size={16} /> Volver
+                            <button className="back-button" style={{marginLeft:'auto', display:'flex', alignItems:'center', gap:'6px'}} onClick={clearSearch}>
+                                <ArrowLeft size={16} /> Volver a Inicio
                             </button>
                         </div>
                         
                         <div className="tabs-container">
-                             <button className={activeTab === 'albums' ? 'tab-button active' : 'tab-button'} onClick={() => setActiveTab('albums')}>
-                                <span style={{display:'flex', alignItems:'center', gap:'6px'}}><Disc3 size={16} /> Álbumes ({albums.length})</span>
-                             </button>
-                             <button className={activeTab === 'eps' ? 'tab-button active' : 'tab-button'} onClick={() => setActiveTab('eps')}>
-                                <span style={{display:'flex', alignItems:'center', gap:'6px'}}><Disc3 size={16} /> EPs ({eps.length})</span>
-                             </button>
-                             <button className={activeTab === 'singles' ? 'tab-button active' : 'tab-button'} onClick={() => setActiveTab('singles')}>
-                                <span style={{display:'flex', alignItems:'center', gap:'6px'}}><Music size={16} /> Singles ({singles.length})</span>
-                             </button>
+                             <button className={activeTab === 'albums' ? 'tab-button active' : 'tab-button'} onClick={() => setActiveTab('albums')}><span style={{display:'flex', alignItems:'center', gap:'6px'}}><Disc3 size={16} /> Álbumes ({albums.length})</span></button>
+                             <button className={activeTab === 'eps' ? 'tab-button active' : 'tab-button'} onClick={() => setActiveTab('eps')}><span style={{display:'flex', alignItems:'center', gap:'6px'}}><Disc3 size={16} /> EPs ({eps.length})</span></button>
+                             <button className={activeTab === 'singles' ? 'tab-button active' : 'tab-button'} onClick={() => setActiveTab('singles')}><span style={{display:'flex', alignItems:'center', gap:'6px'}}><Music size={16} /> Singles ({singles.length})</span></button>
                         </div>
 
                         {loading ? <div className="loading-spinner"></div> : (
@@ -353,9 +474,7 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
                                         <img src={item.image} style={{width: '50px', height: '50px', borderRadius: '4px'}} alt=""/>
                                         <div className="track-info" style={{cursor: 'pointer'}} onClick={() => selectAlbum(item)}>
                                             <div className="track-name">{item.name}</div>
-                                            <div className="track-artist">
-                                                {item.release_date?.slice(0, 4)} · {item.total_tracks} {item.total_tracks === 1 ? 'canción' : 'canciones'}
-                                            </div>
+                                            <div className="track-artist">{item.release_date?.slice(0, 4)} · {item.total_tracks} {item.total_tracks === 1 ? 'canción' : 'canciones'}</div>
                                         </div>
                                         <button className="track-play-button" style={{background:'rgba(26, 31, 58, 0.4)', color:'white', display:'flex', alignItems:'center', gap:'4px'}} onClick={() => selectAlbum(item)}>
                                             <ListMusic size={14}/> Ver canciones
@@ -419,16 +538,12 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
                 <form className="search-form compact-search" onSubmit={handleSearch}>
                     <div className="search-input-wrapper">
                         <span className="search-icon-inside" style={{display:'flex', alignItems:'center'}}><Search size={18} /></span>
-                        <input type="text" className="search-input with-icon" value={searchQuery} 
-                               onChange={e => setSearchQuery(e.target.value)} placeholder="¿Qué buscamos?" />
+                        <input type="text" className="search-input with-icon" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="¿Qué te apetece escuchar?" />
                     </div>
                     <button type="submit" className="search-button">Buscar</button>
                 </form>
             </div>
-
-            <div className="dashboard-scrollable-content">
-                {renderContent()}
-            </div>
+            <div className="dashboard-scrollable-content">{renderContent()}</div>
 
             {showPlaylistModal && (
                 <div className="playlist-modal-overlay">
@@ -438,8 +553,7 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
                         <div className="modal-options">
                             {myPlaylists.map(p => (
                                 <button key={p.id} onClick={() => addToPlaylist(p.id, showPlaylistModal)} style={{display:'flex', alignItems:'center', gap:'10px'}}>
-                                    {p.is_favorites_type ? <Star size={16} color="#FFD662" fill="#FFD662"/> : <Music size={16} color="#00D9FF" />} 
-                                    {p.name}
+                                    {p.is_favorites_type ? <Star size={16} color="#FFD662" fill="#FFD662"/> : <Music size={16} color="#00D9FF" />} {p.name}
                                 </button>
                             ))}
                         </div>

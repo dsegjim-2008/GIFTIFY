@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, ListMusic, MicVocal, Settings, User, LogOut, Gift, Star } from 'lucide-react';
+import { Home, ListMusic, MicVocal, Award, User, LogOut, Gift, Star } from 'lucide-react';
 import './Sidebar.css';
 
 function Sidebar({ user, spotifyToken, setView, activeView }) {
@@ -16,7 +16,7 @@ function Sidebar({ user, spotifyToken, setView, activeView }) {
         { id: 'inicio', icon: <Home size={20} />, label: 'Inicio' },
         { id: 'listas', icon: <ListMusic size={20} />, label: 'Tus Listas' },
         { id: 'artistas', icon: <MicVocal size={20} />, label: 'Artistas Seguidos' },
-        { id: 'ajustes', icon: <Settings size={20} />, label: 'Ajustes' },
+        { id: 'recompensas', icon: <Award size={20} />, label: 'Recompensas' }, // CAMBIO AQUÍ
         { id: 'perfil', icon: <User size={20} />, label: 'Perfil' },
     ];
 

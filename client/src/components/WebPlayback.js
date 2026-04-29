@@ -122,7 +122,7 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId }) {
                 <img src={current_track?.album?.images[0]?.url || "https://via.placeholder.com/150"} alt="Álbum" className="player-album-art" />
                 <div className="player-track-details">
                     <div className="player-track-name">{current_track?.name}</div>
-                    <div className="player-artist-name">{current_track?.artists?.[0]?.name}</div>
+                    <div className="player-artist-name">{current_track.artists.map(artist => artist.name).join(', ')}</div>
                 </div>
             </div>
 

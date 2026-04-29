@@ -108,28 +108,33 @@ router.get('/callback', async (req, res) => {
 });
 
 // ============================================
-// BUSCADOR DEEZER (Canciones y Artistas simultáneos)
+// BUSCADOR MIXTO (Canciones en Spotify, Artistas en Deezer)
 // ============================================
 router.get('/search', async (req, res) => {
     try {
         const query = req.query.query;
         if (!query) return res.json({ artists: [], tracks: [] });
+        
+        const token = getTokenFromHeader(req);
 
-        // Buscamos simultáneamente canciones y artistas en la API gratuita de Deezer
-        const [deezerTracksRes, deezerArtistsRes] = await Promise.allSettled([
-            axios.get(`https://api.deezer.com/search/track?q=${encodeURIComponent(query)}&limit=10`),
+        // Buscamos Canciones en Spotify y Artistas en Deezer simultáneamente
+        const [spotifyTracksRes, deezerArtistsRes] = await Promise.allSettled([
+            axios.get(`${SPOTIFY_API}/search?q=${encodeURIComponent(query)}&type=track&limit=10`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }),
             axios.get(`https://api.deezer.com/search/artist?q=${encodeURIComponent(query)}&limit=6`)
         ]);
 
-        const tracks = deezerTracksRes.status === 'fulfilled'
-            ? (deezerTracksRes.value.data.data || []).map((t, i) => ({
-                id: t.id.toString(),
-                spotify_track_id: t.id.toString(),
-                track_name: t.title,
-                artist_name: t.artist.name,
-                image_url: t.album.cover_medium || 'http://127.0.0.1:3001/uploads/fav.jpeg',
-                duration_ms: t.duration * 1000,
-                uri: '', // Para que tu frontend lo traduzca al darle Play
+        const tracks = spotifyTracksRes.status === 'fulfilled'
+            ? (spotifyTracksRes.value.data.tracks?.items || []).map((t, i) => ({
+                id: t.id,
+                spotify_track_id: t.id,
+                track_name: t.name,
+                // Spotify nos manda todos los artistas en un array, los unimos por comas
+                artist_name: t.artists.map(a => a.name).join(', '), 
+                image_url: t.album.images[0]?.url || 'http://127.0.0.1:3001/uploads/fav.jpeg',
+                duration_ms: t.duration_ms,
+                uri: t.uri, 
                 track_number: i + 1
             }))
             : [];
@@ -195,7 +200,7 @@ router.get('/album-tracks', async (req, res) => {
         const tracks = (response.data.data || []).map((t, i) => ({ 
             id: t.id.toString(), 
             name: t.title, 
-            artist_name: t.artist.name,
+            artist_name: t.contributors ? t.contributors.map(c => c.name).join(', ') : t.artist.name,
             image_url: coverImage, 
             uri: '', // De nuevo, vacío para que salte el traductor a Spotify
             track_number: i + 1, 
@@ -241,7 +246,9 @@ router.get('/home-feed', async (req, res) => {
         // 1. Historial (Spotify)
         const recentRes = await axios.get(SPOTIFY_API + '/me/player/recently-played?limit=50', config).catch(() => ({ data: { items: [] } }));
         const recentFormatted = (recentRes.data.items || []).filter(i => i.track && i.track.id).map(i => ({
-            id: i.track.id, spotify_track_id: i.track.id, track_name: i.track.name, artist_name: i.track.artists[0].name, image_url: i.track.album.images[0]?.url, duration_ms: i.track.duration_ms, uri: i.track.uri
+            id: i.track.id, spotify_track_id: i.track.id, track_name: i.track.name, 
+            artist_name: i.track.artists.map(a => a.name).join(', '), 
+            image_url: i.track.album.images[0]?.url, duration_ms: i.track.duration_ms, uri: i.track.uri
         }));
 
         const uniqueRecentMap = new Map();
@@ -277,7 +284,7 @@ router.get('/home-feed', async (req, res) => {
                     id: t.id.toString(), 
                     spotify_track_id: t.id.toString(), // ID falso para rellenar, se ignorará
                     track_name: t.title, 
-                    artist_name: t.artist.name, 
+                    artist_name: t.contributors ? t.contributors.map(c => c.name).join(', ') : t.artist.name,
                     image_url: t.album.cover_medium || 'http://127.0.0.1:3001/uploads/fav.jpeg', 
                     duration_ms: t.duration * 1000, 
                     uri: '', // Vacio intencionadamente para que el frontend lo traduzca al darle Play
@@ -297,17 +304,24 @@ router.get('/home-feed', async (req, res) => {
             }
         }
 
+        // Función auxiliar para extraer solo 3 nombres de artistas individuales para el subtítulo
+        const getSubtitle = (tracks) => {
+            const allArtistsRaw = tracks.map(t => t.artist_name).join(', ').split(',').map(s => s.trim()).filter(Boolean);
+            const uniqueArtists = [...new Set(allArtistsRaw)];
+            return uniqueArtists.slice(0, 3).join(', ') + (uniqueArtists.length > 3 ? '...' : '');
+        };
+
         res.json({
             recentlyPlayed: uniqueRecent,
             mixRelacionados: { 
                 title: "MIX DIARIO", 
-                subtitle: [...new Set(finalMix.map(t => t.artist_name))].slice(0, 3).join(', ') + '...', 
+                subtitle: getSubtitle(finalMix), 
                 images: [...new Set(finalMix.map(t => t.image_url))].filter(Boolean).slice(0, 4), 
                 tracks: finalMix 
             },
             radarNovedades: { 
                 title: "Top Éxitos del Momento", 
-                subtitle: [...new Set(topTracks.map(t => t.artist_name))].slice(0, 3).join(', ') + '...', 
+                subtitle: getSubtitle(topTracks), 
                 images: [...new Set(topTracks.map(t => t.image_url))].filter(Boolean).slice(0, 4), 
                 tracks: topTracks 
             }

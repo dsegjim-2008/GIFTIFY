@@ -155,4 +155,42 @@ router.post('/redeem', (req, res) => {
     });
 });
 
+// ============================================
+// OBTENER INVENTARIO DE RECOMPENSAS CANJEADAS
+// ============================================
+router.get('/redeemed', (req, res) => {
+    const spotifyId = req.headers['x-spotify-id'];
+    
+    // Buscamos las recompensas que ha canjeado el usuario cruzando las tablas
+    db.query(`
+        SELECT r.* FROM redemptions red 
+        JOIN rewards r ON red.reward_id = r.id 
+        JOIN users u ON red.user_id = u.id 
+        WHERE u.spotify_id = ?
+    `, [spotifyId], (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        
+        // Mapeamos los resultados para asegurarnos de que la fecha existe y el frontend no falle
+        const formattedResults = results.map(r => ({
+            ...r,
+            redeemed_at: r.created_at || new Date().toISOString()
+        }));
+        
+        res.json(formattedResults);
+    });
+});
+
+// ============================================
+// ACTUALIZAR DATOS DEL PERFIL
+// ============================================
+router.put('/update-profile', (req, res) => {
+    const spotifyId = req.headers['x-spotify-id'];
+    const { username, email } = req.body;
+    
+    db.query('UPDATE users SET username = ?, email = ? WHERE spotify_id = ?', [username, email, spotifyId], (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
 module.exports = router;

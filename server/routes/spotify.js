@@ -11,17 +11,15 @@ const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
 const SPOTIFY_API = 'https://api.spotify.com/v1';
 const SPOTIFY_AUTH = 'https://accounts.spotify.com';
 
-// VARIABLES DE CACHÉ GLOBAL (Almacenan los datos en la memoria RAM de tu servidor)
+// VARIABLES DE CACHÉ GLOBAL
 let cachedTopTracks = [];
 let lastCacheTime = 0;
-const CACHE_DURATION = 1000 * 60 * 60; // 1 hora de duración
+const CACHE_DURATION = 1000 * 60 * 60; // 1 hora
 
-// LISTA DE EMERGENCIA (Por si Spotify te tiene baneado temporalmente por pulsar mucho F5)
 const fallbackTracks = [
-    { id: '1', spotify_track_id: '1', track_name: 'Columbia', artist_name: 'Quevedo', image_url: 'https://via.placeholder.com/150/1DB954/1A1F3A?text=Quevedo', duration_ms: 200000, uri: '', track_number: 1 },
-    { id: '2', spotify_track_id: '2', track_name: 'LUNA', artist_name: 'Feid', image_url: 'https://via.placeholder.com/150/1DB954/1A1F3A?text=Feid', duration_ms: 200000, uri: '', track_number: 2 },
-    { id: '3', spotify_track_id: '3', track_name: 'DESPECHÁ', artist_name: 'ROSALÍA', image_url: 'https://via.placeholder.com/150/1DB954/1A1F3A?text=Rosalia', duration_ms: 200000, uri: '', track_number: 3 },
-    { id: '4', spotify_track_id: '4', track_name: 'Monaco', artist_name: 'Bad Bunny', image_url: 'https://via.placeholder.com/150/1DB954/1A1F3A?text=Bad+Bunny', duration_ms: 200000, uri: '', track_number: 4 }
+    { id: '1', spotify_track_id: '1', track_name: 'Columbia', artist_name: 'Quevedo', image_url: 'http://127.0.0.1:3001/uploads/fav.jpeg', duration_ms: 200000, uri: '', track_number: 1 },
+    { id: '2', spotify_track_id: '2', track_name: 'LUNA', artist_name: 'Feid', image_url: 'http://127.0.0.1:3001/uploads/fav.jpeg', duration_ms: 200000, uri: '', track_number: 2 },
+    { id: '3', spotify_track_id: '3', track_name: 'DESPECHÁ', artist_name: 'ROSALÍA', image_url: 'http://127.0.0.1:3001/uploads/fav.jpeg', duration_ms: 200000, uri: '', track_number: 3 }
 ];
 
 const getTokenFromHeader = (req) => {
@@ -109,54 +107,138 @@ router.get('/callback', async (req, res) => {
     } catch (e) { res.redirect('http://127.0.0.1:3000/?error=auth_failed'); }
 });
 
+// ============================================
+// BUSCADOR DEEZER (Canciones y Artistas simultáneos)
+// ============================================
 router.get('/search', async (req, res) => {
     try {
-        const token = getTokenFromHeader(req);
-        const response = await axios.get(SPOTIFY_API + '/search?q=' + req.query.query + '&type=artist&limit=10', { headers: { 'Authorization': `Bearer ${token}` } });
-        res.json(response.data.artists.items);
-    } catch (e) { res.status(500).json({ error: "Error" }); }
+        const query = req.query.query;
+        if (!query) return res.json({ artists: [], tracks: [] });
+
+        // Buscamos simultáneamente canciones y artistas en la API gratuita de Deezer
+        const [deezerTracksRes, deezerArtistsRes] = await Promise.allSettled([
+            axios.get(`https://api.deezer.com/search/track?q=${encodeURIComponent(query)}&limit=10`),
+            axios.get(`https://api.deezer.com/search/artist?q=${encodeURIComponent(query)}&limit=6`)
+        ]);
+
+        const tracks = deezerTracksRes.status === 'fulfilled'
+            ? (deezerTracksRes.value.data.data || []).map((t, i) => ({
+                id: t.id.toString(),
+                spotify_track_id: t.id.toString(),
+                track_name: t.title,
+                artist_name: t.artist.name,
+                image_url: t.album.cover_medium || 'http://127.0.0.1:3001/uploads/fav.jpeg',
+                duration_ms: t.duration * 1000,
+                uri: '', // Para que tu frontend lo traduzca al darle Play
+                track_number: i + 1
+            }))
+            : [];
+
+        const artists = deezerArtistsRes.status === 'fulfilled'
+            ? (deezerArtistsRes.value.data.data || []).map(a => ({
+                id: a.id.toString(),
+                name: a.name,
+                images: [{ url: a.picture_xl }, { url: a.picture_medium }]
+            }))
+            : [];
+
+        res.json({ artists, tracks });
+    } catch (e) {
+        console.error('Error en /search:', e.message);
+        res.status(500).json({ error: "Error en búsqueda", artists: [], tracks: [] });
+    }
 });
 
+// ============================================
+// DISCOGRAFÍA DEL ARTISTA (100% DEEZER)
+// ============================================
 router.get('/artist-tracks', async (req, res) => {
     try {
-        const token = getTokenFromHeader(req);
         const artistId = req.query.id;
-        const [albumItems, epItems, singleItems] = await Promise.all([
-            fetchAllPages(SPOTIFY_API + '/artists/' + artistId + '/albums?include_groups=album&market=ES&limit=10', token),
-            fetchAllPages(SPOTIFY_API + '/artists/' + artistId + '/albums?include_groups=ep&market=ES&limit=10', token),
-            fetchAllPages(SPOTIFY_API + '/artists/' + artistId + '/albums?include_groups=single&market=ES&limit=10', token)
-        ]);
-        const formatItem = (item) => ({ id: item.id, name: item.name, uri: item.uri, image: item.images[0]?.url, total_tracks: item.total_tracks, release_date: item.release_date });
-        const sortByDate = (a, b) => new Date(b.release_date) - new Date(a.release_date);
-        const formattedSingles = singleItems.map(formatItem);
-        res.json({
-            albums: albumItems.map(formatItem).sort(sortByDate),
-            eps: [...epItems.map(formatItem), ...formattedSingles.filter(s => s.total_tracks > 1)].sort(sortByDate),
-            singles: formattedSingles.filter(s => s.total_tracks <= 1).sort(sortByDate)
+        // Obtenemos los álbumes del artista directamente de Deezer (sin Rate Limits)
+        const response = await axios.get(`https://api.deezer.com/artist/${artistId}/albums?limit=50`);
+        
+        const albumsData = response.data.data || [];
+        
+        const formatItem = (item) => ({ 
+            id: item.id.toString(), 
+            name: item.title, 
+            uri: '', // Lo dejamos vacío para que el Frontend use el "Traductor" al darle a Play
+            image: item.cover_medium, 
+            total_tracks: item.tracklist ? 'Varios' : 1, 
+            release_date: item.release_date || 'Desconocido' 
         });
-    } catch (e) { res.status(500).json({ error: "Error" }); }
+
+        const albums = albumsData.filter(a => a.record_type !== 'single' && a.record_type !== 'ep').map(formatItem);
+        const eps = albumsData.filter(a => a.record_type === 'ep').map(formatItem);
+        const singles = albumsData.filter(a => a.record_type === 'single').map(formatItem);
+
+        res.json({ albums, eps, singles });
+    } catch (e) { 
+        console.error('Error en /artist-tracks:', e.message);
+        res.status(500).json({ error: "Error" }); 
+    }
 });
 
+// ============================================
+// CANCIONES DE UN ÁLBUM (100% DEEZER)
+// ============================================
 router.get('/album-tracks', async (req, res) => {
     try {
+        const albumId = req.query.id;
+        // 1. Obtenemos las canciones
+        const response = await axios.get(`https://api.deezer.com/album/${albumId}/tracks`);
+        // 2. Obtenemos la portada del álbum (Deezer la manda separada a veces)
+        const albumInfo = await axios.get(`https://api.deezer.com/album/${albumId}`);
+        const coverImage = albumInfo.data.cover_medium || '';
+
+        const tracks = (response.data.data || []).map((t, i) => ({ 
+            id: t.id.toString(), 
+            name: t.title, 
+            artist_name: t.artist.name,
+            image_url: coverImage, 
+            uri: '', // De nuevo, vacío para que salte el traductor a Spotify
+            track_number: i + 1, 
+            duration_ms: t.duration * 1000 
+        }));
+
+        res.json(tracks);
+    } catch (e) { 
+        console.error('Error en /album-tracks:', e.message);
+        res.status(500).json({ error: "Error" }); 
+    }
+});
+
+// ============================================
+// RESOLVEDOR DE URIs (Traductor Deezer -> Spotify)
+// ============================================
+router.get('/find-track-uri', async (req, res) => {
+    try {
         const token = getTokenFromHeader(req);
-        const tracks = await fetchAllPages(SPOTIFY_API + '/albums/' + req.query.id + '/tracks?market=ES&limit=10', token);
-        res.json(tracks.map((t, i) => ({ id: t.id, name: t.name, uri: t.uri, track_number: t.track_number || i + 1, duration_ms: t.duration_ms })));
-    } catch (e) { res.status(500).json({ error: "Error" }); }
+        const { name, artist } = req.query;
+        if (!name || !artist) return res.json({ uri: null });
+
+        const query = encodeURIComponent(`${name} ${artist}`);
+        const response = await axios.get(`${SPOTIFY_API}/search?q=${query}&type=track&limit=1`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        const track = response.data.tracks?.items?.[0];
+        res.json({ uri: track ? track.uri : null });
+    } catch (e) {
+        console.error('❌ Error traduciendo URI:', e.message);
+        res.json({ uri: null });
+    }
 });
 
 router.get('/home-feed', async (req, res) => {
     try {
-        console.log("\n========================================");
-        console.log("🚀 INICIANDO CARGA DEL HOME FEED (CON CACHÉ ANTI-BLOQUEOS)...");
-        
         const token = getTokenFromHeader(req);
         const spotifyId = req.headers['x-spotify-id'];
         if (!token || !spotifyId) return res.status(401).json({ error: "Faltan credenciales" });
         const config = { headers: { 'Authorization': `Bearer ${token}` } };
 
-        // 1. Historial
-        console.log("-> 1. Buscando Historial Reciente...");
+        // 1. Historial (Spotify)
         const recentRes = await axios.get(SPOTIFY_API + '/me/player/recently-played?limit=50', config).catch(() => ({ data: { items: [] } }));
         const recentFormatted = (recentRes.data.items || []).filter(i => i.track && i.track.id).map(i => ({
             id: i.track.id, spotify_track_id: i.track.id, track_name: i.track.name, artist_name: i.track.artists[0].name, image_url: i.track.album.images[0]?.url, duration_ms: i.track.duration_ms, uri: i.track.uri
@@ -168,8 +250,7 @@ router.get('/home-feed', async (req, res) => {
             id: t.id, name: t.track_name, artist: t.artist_name, image: t.image_url, uri: t.uri
         }));
 
-        // 2. Mix Diario (Favoritos + Recientes)
-        console.log("-> 2. Preparando Mix Diario...");
+        // 2. Mix Diario (Spotify + BD)
         const favTracks = await getFavorites(spotifyId);
         let mixPool = favTracks.map(t => ({
             id: t.spotify_track_id, spotify_track_id: t.spotify_track_id, track_name: t.track_name, artist_name: t.artist_name, image_url: t.image_url, duration_ms: t.duration_ms, uri: `spotify:track:${t.spotify_track_id}`
@@ -181,52 +262,40 @@ router.get('/home-feed', async (req, res) => {
         let finalMix = Array.from(mixMap.values()).sort(() => 0.5 - Math.random()).slice(0, 30);
         finalMix.forEach((t, i) => t.track_number = i + 1);
 
-        // 3. TOP ÉXITOS: SISTEMA DE CACHÉ
-        console.log("-> 3. Obteniendo Top Éxitos...");
+        // 3. TOP ÉXITOS: API DE DEEZER (Inmune al Rate Limit)
+        console.log("-> 3. Obteniendo Top Éxitos (Vía Deezer)...");
         let topTracks = [];
 
-        // Comprobamos si tenemos las canciones guardadas y si ha pasado menos de 1 hora
         if (cachedTopTracks.length > 0 && (Date.now() - lastCacheTime < CACHE_DURATION)) {
-            console.log("   ✅ Recuperando canciones de la memoria caché (0 peticiones a Spotify).");
+            console.log("   ✅ Recuperando canciones de la memoria caché.");
             topTracks = cachedTopTracks;
         } else {
-            console.log("   ⚠️ Caché vacía o caducada. Consultando a Spotify de forma segura...");
-            
-            const [res1, res2, res3] = await Promise.all([
-                axios.get(`${SPOTIFY_API}/search?q=artist:quevedo&type=track&limit=10`, config).catch(() => null),
-                axios.get(`${SPOTIFY_API}/search?q=artist:feid&type=track&limit=10`, config).catch(() => null),
-                axios.get(`${SPOTIFY_API}/search?q=artist:rosalia&type=track&limit=10`, config).catch(() => null)
-            ]);
+            console.log("   ⚠️ Caché vacía. Consultando a Deezer...");
+            try {
+                const deezerRes = await axios.get('https://api.deezer.com/chart/0/tracks?limit=30');
+                topTracks = (deezerRes.data.data || []).map((t, i) => ({
+                    id: t.id.toString(), 
+                    spotify_track_id: t.id.toString(), // ID falso para rellenar, se ignorará
+                    track_name: t.title, 
+                    artist_name: t.artist.name, 
+                    image_url: t.album.cover_medium || 'http://127.0.0.1:3001/uploads/fav.jpeg', 
+                    duration_ms: t.duration * 1000, 
+                    uri: '', // Vacio intencionadamente para que el frontend lo traduzca al darle Play
+                    track_number: i + 1
+                }));
 
-            const rawTopTracks = [
-                ...(res1?.data?.tracks?.items || []),
-                ...(res2?.data?.tracks?.items || []),
-                ...(res3?.data?.tracks?.items || [])
-            ];
-
-            topTracks = rawTopTracks.filter(t => t && t.id).map((t, i) => ({
-                id: t.id, 
-                spotify_track_id: t.id, 
-                track_name: t.name, 
-                artist_name: t.artists[0]?.name || 'Desconocido', 
-                image_url: t.album?.images[0]?.url || 'https://via.placeholder.com/150', 
-                duration_ms: t.duration_ms, 
-                uri: t.uri, 
-                track_number: i + 1
-            }));
-
-            if (topTracks.length > 0) {
-                console.log(`   ✅ Guardando ${topTracks.length} canciones en la caché por 1 hora.`);
-                cachedTopTracks = topTracks;
-                lastCacheTime = Date.now();
-            } else {
-                console.log("   🚨 Spotify te sigue bloqueando temporalmente por Rate Limit.");
-                console.log("   🛡️ Activando protocolo de emergencia: Usando canciones Fallback para que puedas seguir trabajando.");
+                if (topTracks.length > 0) {
+                    console.log(`   ✅ Guardando ${topTracks.length} éxitos de Deezer en caché.`);
+                    cachedTopTracks = topTracks;
+                    lastCacheTime = Date.now();
+                } else {
+                    topTracks = fallbackTracks;
+                }
+            } catch (deezerError) {
+                console.error("   ❌ Error en Deezer:", deezerError.message);
                 topTracks = fallbackTracks;
             }
         }
-
-        console.log("=========================================\n");
 
         res.json({
             recentlyPlayed: uniqueRecent,

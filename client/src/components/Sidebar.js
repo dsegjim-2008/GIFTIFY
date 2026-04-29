@@ -28,9 +28,20 @@ function Sidebar({ user, spotifyToken, setView, activeView }) {
             </div>
 
             <div className="sidebar-user-info">
-                <div className="user-avatar-sidebar">
-                    <User size={24} color="white" />
+                {/* --- SECCIÓN DEL AVATAR MINI ACTUALIZADA --- */}
+                <div className="user-avatar-sidebar" style={{ padding: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {user?.photo_url && !user.photo_url.includes('default_avatar') ? (
+                        <img 
+                            src={user.photo_url} 
+                            alt="Avatar" 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                            onError={(e) => { e.target.style.display = 'none'; }} 
+                        />
+                    ) : (
+                        <User size={24} color="white" />
+                    )}
                 </div>
+                {/* ------------------------------------------- */}
                 <div className="user-details-sidebar">
                     <p className="user-name-sidebar">{user?.username || 'Usuario'}</p>
                     <p className="user-points-sidebar">

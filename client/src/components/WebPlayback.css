@@ -288,3 +288,15 @@
   0%, 100% { opacity: 0.6; text-shadow: none; }
   50% { opacity: 1; text-shadow: var(--glow-cyan); }
 }
+
+/* Estilo para los artistas clickeables en el reproductor */
+.clickable-artist {
+    cursor: pointer;
+    transition: color 0.2s ease, text-decoration 0.2s ease;
+    pointer-events: auto; /* Permite el clic aunque el contenedor padre no lo haga */
+}
+
+.clickable-artist:hover {
+    color: #1DB954; /* Se pone verde Spotify al pasar el ratón */
+    text-decoration: underline;
+}

@@ -7,7 +7,7 @@ const initDatabase = async () => {
     console.log("⏳ Comprobando y construyendo la Base de Datos...");
 
     try {
-        // 1. Usuarios
+        // 1. Usuarios (Añadido photo_url para la imagen de perfil)
         await query(`
             CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -16,6 +16,7 @@ const initDatabase = async () => {
                 password VARCHAR(255) NOT NULL,
                 points INT DEFAULT 0,
                 spotify_id VARCHAR(255) NOT NULL,
+                photo_url VARCHAR(255) DEFAULT 'http://127.0.0.1:3001/uploads/fav.jpeg',
                 access_token TEXT NOT NULL,
                 refresh_token TEXT NOT NULL,
                 expires_at BIGINT NOT NULL
@@ -33,7 +34,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 3. Playlists (Fíjate que ya teníamos el photo_url preparado)
+        // 3. Playlists 
         await query(`
             CREATE TABLE IF NOT EXISTS playlists (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -45,7 +46,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 4. Canciones en Playlists (Con todas las columnas nuevas)
+        // 4. Canciones en Playlists
         await query(`
             CREATE TABLE IF NOT EXISTS playlist_songs (
                 id INT AUTO_INCREMENT PRIMARY KEY,

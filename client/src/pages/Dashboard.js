@@ -13,7 +13,7 @@ import DynamicListView from '../components/DynamicListView';
 import './Dashboard.css';
 
 function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
-    // 🧠 Toda la lógica compleja vive ahora en este Custom Hook
+    // 🧠 Toda la lógica compleja vive en este Custom Hook
     const data = useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView);
 
     // 🎨 Dashboard.js solo se preocupa de pintar la vista correcta
@@ -49,8 +49,22 @@ function Dashboard({ user, setUser, spotifyToken, spotifyId, view, setView }) {
 
             {spotifyToken && (
                 <WebPlayback 
-                    token={spotifyToken} spotifyId={spotifyId} playingArtist={data.playingArtistData} 
-                    user={user} setUser={setUser} trackUri={data.currentUri} 
+                    token={spotifyToken} 
+                    spotifyId={spotifyId} 
+                    playingArtist={data.playingArtistData} 
+                    user={user} 
+                    setUser={setUser} 
+                    trackUri={data.currentUri}
+                    
+                    /* FUNCIONES DE NAVEGACIÓN Y AÑADIR A LISTA */
+                    setShowPlaylistModal={data.setShowPlaylistModal}
+                    selectArtist={data.selectArtist}
+
+                    /* LA COLA DE REPRODUCCIÓN MAESTRA (REACT QUEUE) */
+                    playNext={data.playNext}
+                    playPrevious={data.playPrevious}
+                    toggleShuffle={data.toggleShuffle}
+                    isShuffle={data.isShuffle}
                 />
             )}
         </div>

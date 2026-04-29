@@ -5,9 +5,21 @@ function ProfileView({ user, redeemedRewards, editProfile }) {
     return (
         <div className="profile-wrapper">
             <div className="profile-header-banner">
-                <div className="profile-avatar-large">
-                    {user?.username?.charAt(0).toUpperCase() || 'U'}
+                {/* --- SECCIÓN DEL AVATAR ACTUALIZADA --- */}
+                <div className="profile-avatar-large" style={{ padding: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {user?.photo_url && !user.photo_url.includes('default_avatar') ? (
+                        <img 
+                            src={user.photo_url} 
+                            alt="Perfil" 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                            onError={(e) => { e.target.style.display = 'none'; }} // Si la imagen falla, la oculta y muestra el fondo
+                        />
+                    ) : (
+                        user?.username?.charAt(0).toUpperCase() || 'U'
+                    )}
                 </div>
+                {/* -------------------------------------- */}
+                
                 <div className="profile-header-info">
                     <h2>{user?.username || 'Usuario'}</h2>
                     <p>{user?.email || 'Sin correo vinculado'}</p>

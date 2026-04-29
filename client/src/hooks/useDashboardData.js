@@ -34,9 +34,13 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
     const [homeFeed, setHomeFeed] = useState(null);
     const [selectedDynamicList, setSelectedDynamicList] = useState(null);
 
+    const [currentQueue, setCurrentQueue] = useState([]);
+    const [currentIndex, setCurrentIndex] = useState(-1);
+    const [isShuffle, setIsShuffle] = useState(false);
+    const [playbackHistory, setPlaybackHistory] = useState([]);
+
     const config = { headers: { Authorization: `Bearer ${spotifyToken}`, 'X-Spotify-Id': spotifyId } };
 
-    // --- EFECTOS ---
     useEffect(() => {
         if (spotifyId) {
             axios.get('http://127.0.0.1:3001/api/users/profile', config).then(res => setUser(res.data));
@@ -76,7 +80,6 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
         return () => clearTimeout(delayDebounceFn);
     }, [searchQuery]);
 
-    // --- FUNCIONES ---
     const handleSearch = (e) => { e.preventDefault(); if (searchQuery.trim()) setIsSearchOpen(true); };
     const clearSearch = () => { setSearchQuery(""); setSearchResults({ artists: [], tracks: [] }); setIsSearchOpen(false); setSelectedArtist(null); };
 
@@ -111,20 +114,37 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
     const createPlaylist = async () => {
         const { value: formValues } = await Swal.fire({
             title: 'Crear nueva Lista',
-            html: '<input id="swal-input-name" class="swal2-input" placeholder="Nombre de la lista" style="background: rgba(26, 31, 58, 0.6); color: white; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%;">',
-            focusConfirm: false, showCancelButton: true, confirmButtonText: 'Crear', cancelButtonText: 'Cancelar',
-            background: '#1a1f3a', color: '#fff', confirmButtonColor: '#1DB954', cancelButtonColor: '#d33',
+            html: 
+                '<input id="swal-input-name" class="swal2-input" placeholder="Nombre de la lista" style="background: rgba(26, 31, 58, 0.6); color: white; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%; margin-bottom: 10px;">' +
+                '<input id="swal-input-file" type="file" class="swal2-file" style="background: rgba(26, 31, 58, 0.4); color: #ccc; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%; font-size: 0.8rem;">',
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: 'Crear',
+            cancelButtonText: 'Cancelar',
+            background: '#1a1f3a',
+            color: '#fff',
+            confirmButtonColor: '#1DB954', 
+            cancelButtonColor: '#555',
             preConfirm: () => {
                 const name = document.getElementById('swal-input-name').value;
+                const file = document.getElementById('swal-input-file').files[0]; 
                 if (!name) Swal.showValidationMessage('¡El nombre es obligatorio!');
-                return { name };
+                return { name, file };
             }
         });
 
         if (formValues) {
             try {
-                const formData = new FormData(); formData.append('name', formValues.name);
-                await axios.post('http://127.0.0.1:3001/api/users/playlists', formData, config);
+                const formData = new FormData();
+                formData.append('name', formValues.name);
+                if (formValues.file) {
+                    formData.append('photo', formValues.file); 
+                }
+
+                await axios.post('http://127.0.0.1:3001/api/users/playlists', formData, {
+                    headers: { ...config.headers, 'Content-Type': 'multipart/form-data' } 
+                });
+                
                 const res = await axios.get('http://127.0.0.1:3001/api/users/playlists', config);
                 setMyPlaylists(res.data);
                 Swal.fire({ title: '¡Creada!', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
@@ -132,26 +152,68 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
         }
     };
 
+    // --- NUEVO: EDITAR PLAYLIST CON BOTÓN DE ELIMINAR ---
     const editPlaylist = async () => {
-        const { value: formValues } = await Swal.fire({
+        const result = await Swal.fire({
             title: 'Editar Lista',
-            html: `<input id="swal-input-name" class="swal2-input" value="${selectedPlaylist.name}" placeholder="Nombre de la lista" style="background: rgba(26, 31, 58, 0.6); color: white; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%;">`,
-            focusConfirm: false, showCancelButton: true, confirmButtonText: 'Guardar', cancelButtonText: 'Cancelar',
-            background: '#1a1f3a', color: '#fff', confirmButtonColor: '#1DB954', cancelButtonColor: '#d33',
-            preConfirm: () => {
-                const name = document.getElementById('swal-input-name').value;
-                if (!name) Swal.showValidationMessage('¡El nombre es obligatorio!');
-                return { name };
-            }
+            html: 
+                `<input id="swal-input-name" class="swal2-input" value="${selectedPlaylist.name}" placeholder="Nombre de la lista" style="background: rgba(26, 31, 58, 0.6); color: white; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%; margin-bottom: 10px;">` +
+                `<input id="swal-input-file" type="file" class="swal2-file" style="background: rgba(26, 31, 58, 0.4); color: #ccc; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%; font-size: 0.8rem;">`,
+            focusConfirm: false,
+            showCancelButton: true,
+            showDenyButton: true, // Esto activa el botón rojo extra
+            confirmButtonText: 'Guardar',
+            denyButtonText: 'Borrar Lista',
+            cancelButtonText: 'Cancelar',
+            background: '#1a1f3a',
+            color: '#fff',
+            confirmButtonColor: '#1DB954', 
+            denyButtonColor: '#d33',
+            cancelButtonColor: '#555',
+            preConfirm: () => ({
+                name: document.getElementById('swal-input-name').value,
+                file: document.getElementById('swal-input-file').files[0]
+            })
         });
 
-        if (formValues) {
+        // 1. Si el usuario pulsó el botón rojo de "Borrar Lista"
+        if (result.isDenied) {
+            const confirmDelete = await Swal.fire({
+                title: '¿Estás seguro?',
+                text: "Se borrará la lista y todas sus canciones. No podrás deshacerlo.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#555',
+                confirmButtonText: 'Sí, borrar todo',
+                cancelButtonText: 'Cancelar',
+                background: '#1a1f3a', color: '#fff'
+            });
+
+            if (confirmDelete.isConfirmed) {
+                try {
+                    await axios.delete(`http://127.0.0.1:3001/api/users/playlists/${selectedPlaylist.id}`, config);
+                    setMyPlaylists(prev => prev.filter(p => p.id !== selectedPlaylist.id));
+                    setSelectedPlaylist(null); // Limpiamos la vista actual
+                    Swal.fire({ title: 'Lista Borrada', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
+                } catch(e) { console.error(e); }
+            }
+        } 
+        // 2. Si el usuario pulsó en "Guardar" cambios
+        else if (result.isConfirmed && result.value) {
             try {
-                const formData = new FormData(); formData.append('name', formValues.name);
-                const res = await axios.put(`http://127.0.0.1:3001/api/users/playlists/${selectedPlaylist.id}`, formData, config);
-                setSelectedPlaylist(res.data);
+                const formData = new FormData();
+                formData.append('name', result.value.name);
+                if (result.value.file) formData.append('photo', result.value.file);
+
+                const res = await axios.put(`http://127.0.0.1:3001/api/users/playlists/${selectedPlaylist.id}`, formData, {
+                    headers: { ...config.headers, 'Content-Type': 'multipart/form-data' }
+                });
+
+                setSelectedPlaylist(prev => ({ ...prev, ...res.data }));
                 const freshPlaylists = await axios.get('http://127.0.0.1:3001/api/users/playlists', config);
                 setMyPlaylists(freshPlaylists.data);
+
                 Swal.fire({ title: '¡Actualizada!', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
             } catch(e) { console.error(e); }
         }
@@ -171,7 +233,14 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
             await axios.post('http://127.0.0.1:3001/api/users/playlists/add-song', { playlistId, track }, config);
             setShowPlaylistModal(null);
             Swal.fire({ title: 'Añadida', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
-        } catch(e) { console.error(e); }
+        } catch(e) { 
+            setShowPlaylistModal(null);
+            if (e.response && e.response.status === 400) {
+                Swal.fire({ title: 'Ya está en la lista', text: 'Esta canción ya forma parte de esta playlist.', icon: 'info', toast: true, position: 'top-end', showConfirmButton: false, timer: 4000, background: '#1a1f3a', color: '#fff' });
+            } else {
+                Swal.fire({ title: 'Error', text: 'No se pudo añadir la canción', icon: 'error', background: '#1a1f3a', color: '#fff' });
+            }
+        }
     };
 
     const removeFromPlaylist = async (playlistId, trackId) => {
@@ -194,39 +263,116 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
         }
     };
 
+    // --- NUEVO: EDITAR PERFIL AVANZADO (FOTOS Y CONTRASEÑA) ---
     const editProfile = async () => {
-        const { value: formValues } = await Swal.fire({
+        const result = await Swal.fire({
             title: 'Editar Perfil',
-            html: `<input id="swal-input-name" class="swal2-input" value="${user?.username || ''}" placeholder="Nombre de usuario" style="background: rgba(26, 31, 58, 0.6); color: white; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%;">` +
-                  `<input id="swal-input-email" type="email" class="swal2-input" value="${user?.email || ''}" placeholder="Correo electrónico" style="background: rgba(26, 31, 58, 0.6); color: white; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%;">`,
-            focusConfirm: false, showCancelButton: true, confirmButtonText: 'Guardar', cancelButtonText: 'Cancelar', background: '#1a1f3a', color: '#fff',
-            preConfirm: () => ({ username: document.getElementById('swal-input-name').value, email: document.getElementById('swal-input-email').value })
+            html: `<input id="swal-input-name" class="swal2-input" value="${user?.username || ''}" placeholder="Nombre de usuario" style="background: rgba(26, 31, 58, 0.6); color: white; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%; margin-bottom: 10px;">` +
+                  `<input id="swal-input-email" type="email" class="swal2-input" value="${user?.email || ''}" placeholder="Correo electrónico" style="background: rgba(26, 31, 58, 0.6); color: white; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%; margin-bottom: 10px;">` +
+                  `<input id="swal-input-password" type="password" class="swal2-input" placeholder="Nueva contraseña (dejar en blanco para no cambiar)" style="background: rgba(26, 31, 58, 0.6); color: white; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%; margin-bottom: 10px;">` +
+                  `<label style="font-size: 0.8rem; display:block; margin-top:10px; color:#aaa;">Foto de Perfil:</label>` +
+                  `<input id="swal-input-file" type="file" class="swal2-file" style="background: rgba(26, 31, 58, 0.4); color: #ccc; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%; font-size: 0.8rem;">`,
+            focusConfirm: false, showCancelButton: true, confirmButtonText: 'Guardar', cancelButtonText: 'Cancelar', background: '#1a1f3a', color: '#fff', confirmButtonColor: '#1DB954', cancelButtonColor: '#555',
+            preConfirm: () => ({ 
+                username: document.getElementById('swal-input-name').value, 
+                email: document.getElementById('swal-input-email').value,
+                password: document.getElementById('swal-input-password').value,
+                file: document.getElementById('swal-input-file').files[0]
+            })
         });
-        if (formValues) {
+
+        if (result.isConfirmed && result.value) {
             try {
-                await axios.put('http://127.0.0.1:3001/api/users/update-profile', formValues, config);
-                setUser(prev => ({ ...prev, username: formValues.username, email: formValues.email }));
+                const formData = new FormData();
+                formData.append('username', result.value.username);
+                formData.append('email', result.value.email);
+                if (result.value.password) formData.append('password', result.value.password);
+                if (result.value.file) formData.append('photo', result.value.file);
+
+                await axios.put('http://127.0.0.1:3001/api/users/update-profile', formData, {
+                    headers: { ...config.headers, 'Content-Type': 'multipart/form-data' }
+                });
+                
+                // Pedimos de nuevo los datos del perfil para refrescar la foto nueva en pantalla
+                const freshUser = await axios.get('http://127.0.0.1:3001/api/users/profile', config);
+                setUser(freshUser.data);
+
                 Swal.fire({ title: '¡Actualizado!', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
             } catch(e) { console.error(e); }
         }
     };
 
-    const playContent = async (uri, item = null, trackInfo = null) => {
+    const playContent = async (uri, item = null, trackInfo = null, listToQueue = null, isBack = false) => {
         if (!spotifyToken) return Swal.fire({ title: 'Spotify Desconectado', icon: 'warning', background: '#1a1f3a', color: '#fff' });
+        
         let finalUri = uri;
-        if (!finalUri && trackInfo?.name && trackInfo?.artist) {
-            setResolvingUri(`${trackInfo.name}-${trackInfo.artist}`);
+        let queue = listToQueue || [];
+
+        if (!listToQueue) {
+            if (view === 'listas') queue = playlistSongs;
+            else if (view === 'inicio' && selectedDynamicList) queue = selectedDynamicList.tracks;
+            else if (selectedAlbum) queue = albumTracks;
+        }
+        
+        if (!finalUri && trackInfo) {
+            setResolvingUri(`${trackInfo.name || trackInfo.track_name}-${trackInfo.artist || trackInfo.artist_name}`);
             try {
-                const res = await axios.get(`http://127.0.0.1:3001/api/spotify/find-track-uri?name=${encodeURIComponent(trackInfo.name)}&artist=${encodeURIComponent(trackInfo.artist)}`, config);
+                const name = trackInfo.name || trackInfo.track_name;
+                const artist = trackInfo.artist || trackInfo.artist_name;
+                const res = await axios.get(`http://127.0.0.1:3001/api/spotify/find-track-uri?name=${encodeURIComponent(name)}&artist=${encodeURIComponent(artist)}`, config);
                 finalUri = res.data.uri;
             } catch (e) { console.error(e); }
             setResolvingUri(null);
         }
+        
         if (!finalUri) return Swal.fire({ title: 'No disponible', text: 'Esta canción no está en Spotify.', icon: 'info', background: '#1a1f3a', color: '#fff' });
+        
+        if (!isBack && currentUri && finalUri !== currentUri) {
+            if (currentIndex !== -1 && currentQueue[currentIndex]) {
+                setPlaybackHistory(prev => [...prev, currentQueue[currentIndex]]);
+            }
+        }
+
         setCurrentUri(finalUri);
-        if (item && item.artist_name) setPlayingArtistData({ id: item.artist_name, name: item.artist_name });
-        else if (selectedArtist) setPlayingArtistData({ id: selectedArtist.id, name: selectedArtist.name });
+
+        setCurrentQueue(queue);
+        const index = queue.findIndex(t => (t.uri === finalUri) || (t.spotify_track_id && finalUri.includes(t.spotify_track_id)));
+        setCurrentIndex(index !== -1 ? index : 0);
+
+        if (trackInfo || item) {
+            setPlayingArtistData({ 
+                id: trackInfo?.artist_name || item?.name || selectedArtist?.id, 
+                name: trackInfo?.artist_name || item?.name || selectedArtist?.name 
+            });
+        }
     };
+
+    const playNext = () => {
+        if (currentQueue.length === 0) return;
+        let nextIndex;
+        if (isShuffle) {
+            nextIndex = Math.floor(Math.random() * currentQueue.length);
+        } else {
+            nextIndex = (currentIndex + 1) % currentQueue.length;
+        }
+        const nextTrack = currentQueue[nextIndex];
+        playContent(nextTrack.uri, null, nextTrack, currentQueue);
+    };
+
+    const playPrevious = () => {
+        if (playbackHistory.length > 0) {
+            const lastTrack = playbackHistory[playbackHistory.length - 1];
+            setPlaybackHistory(prev => prev.slice(0, -1));
+            playContent(lastTrack.uri, null, lastTrack, currentQueue, true);
+        } else {
+            if (currentQueue.length === 0) return;
+            const prevIndex = (currentIndex - 1 + currentQueue.length) % currentQueue.length;
+            const prevTrack = currentQueue[prevIndex];
+            playContent(prevTrack.uri, null, prevTrack, currentQueue, true);
+        }
+    };
+
+    const toggleShuffle = () => setIsShuffle(!isShuffle);
 
     const formatDuration = (ms) => {
         if (!ms) return '';
@@ -241,6 +387,7 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
         loading, currentUri, playingArtistData, resolvingUri, myPlaylists, followedArtists, isFollowing,
         showPlaylistModal, setShowPlaylistModal, selectedPlaylist, setSelectedPlaylist, playlistSongs,
         rewards, redeemedRewards, homeFeed, selectedDynamicList, setSelectedDynamicList,
+        isShuffle, playNext, playPrevious, toggleShuffle,
         handleSearch, clearSearch, selectArtist, selectAlbum, toggleFollow, createPlaylist, editPlaylist,
         openPlaylist, addToPlaylist, removeFromPlaylist, redeemReward, editProfile, playContent, formatDuration
     };

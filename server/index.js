@@ -12,6 +12,7 @@ app.use(express.json());
 
 // NUEVO: Hacemos que la carpeta "uploads" sea pública para poder ver las fotos
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/media', express.static(path.join(__dirname, 'media')));
 
 const spotifyRoutes = require('./routes/spotify');
 app.use('/api/spotify', spotifyRoutes);

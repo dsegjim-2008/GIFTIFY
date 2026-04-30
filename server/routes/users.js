@@ -31,19 +31,41 @@ const getUserId = (spotifyId, callback) => {
     });
 };
 
+// --- NUEVA FUNCIÓN BASURERA ---
+// Borra físicamente la foto anterior para no llenar el servidor
+const deleteOldFile = (fileUrl) => {
+    if (!fileUrl) return;
+    
+    // Solo borramos si es una subida nuestra (contiene la ruta /uploads/) 
+    // Y verificamos que NO sean las fotos por defecto del sistema
+    if (fileUrl.includes('127.0.0.1:3001/uploads/') && 
+        !fileUrl.includes('fav.jpeg') && 
+        !fileUrl.includes('default_avatar.jpeg') && 
+        !fileUrl.includes('fnac.png')) {
+        
+        // Extraemos solo el nombre del archivo
+        const filename = fileUrl.split('/uploads/')[1];
+        const filePath = path.join(__dirname, '../uploads', filename);
+        
+        // Borramos el archivo
+        fs.unlink(filePath, (err) => {
+            if (err) console.error("Error borrando archivo local antiguo:", err);
+            else console.log(`🗑️ Archivo local eliminado: ${filename}`);
+        });
+    }
+};
+
 // ============================================
 // 1. PERFIL Y DATOS BÁSICOS
 // ============================================
 router.get('/profile', (req, res) => {
     const spotifyId = req.headers['x-spotify-id'];
-    // Añadimos photo_url para que el frontend pueda mostrar la foto de perfil
     db.query('SELECT id, username, email, points, photo_url FROM users WHERE spotify_id = ?', [spotifyId], (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(results[0] || {});
     });
 });
 
-// NUEVO: Soporta subida de foto y cambio de contraseña
 router.put('/update-profile', upload.single('photo'), (req, res) => {
     const spotifyId = req.headers['x-spotify-id'];
     const { username, email, password } = req.body;
@@ -51,14 +73,20 @@ router.put('/update-profile', upload.single('photo'), (req, res) => {
     let query = 'UPDATE users SET username = ?, email = ?';
     let params = [username, email];
 
-    // Si ha subido foto, la añadimos a la actualización
+    // Si ha subido foto, la añadimos a la actualización y borramos la vieja
     if (req.file) {
+        // Buscamos la foto antigua antes de actualizar
+        db.query('SELECT photo_url FROM users WHERE spotify_id = ?', [spotifyId], (err, users) => {
+            if (!err && users.length > 0) {
+                deleteOldFile(users[0].photo_url); // Borramos la vieja
+            }
+        });
+
         const photoUrl = `http://127.0.0.1:3001/uploads/${req.file.filename}`;
         query += ', photo_url = ?';
         params.push(photoUrl);
     }
 
-    // Si ha escrito una contraseña, la actualizamos
     if (password && password.trim() !== '') {
         query += ', password = ?';
         params.push(password);
@@ -90,7 +118,7 @@ router.get('/playlists', (req, res) => {
 router.post('/playlists', upload.single('photo'), (req, res) => {
     const spotifyId = req.headers['x-spotify-id'];
     const { name } = req.body;
-    const photoUrl = req.file ? `http://127.0.0.1:3001/uploads/${req.file.filename}` : 'http://127.0.0.1:3001/uploads/fav.jpeg';
+    const photoUrl = req.file ? `http://127.0.0.1:3001/uploads/${req.file.filename}` : 'http://127.0.0.1:3001/media/logo.webp';
 
     getUserId(spotifyId, (err, userId) => {
         if (err) return res.status(404).json({ error: err.message });
@@ -105,7 +133,15 @@ router.post('/playlists', upload.single('photo'), (req, res) => {
 router.put('/playlists/:id', upload.single('photo'), (req, res) => {
     const playlistId = req.params.id;
     const { name } = req.body;
+    
     if (req.file) {
+        // Buscamos la foto antigua de la playlist para borrarla
+        db.query('SELECT photo_url FROM playlists WHERE id = ?', [playlistId], (err, results) => {
+            if (!err && results.length > 0) {
+                deleteOldFile(results[0].photo_url); // Borramos la vieja
+            }
+        });
+
         const photoUrl = `http://127.0.0.1:3001/uploads/${req.file.filename}`;
         db.query('UPDATE playlists SET name = ?, photo_url = ? WHERE id = ?', [name, photoUrl, playlistId], (err) => {
             if (err) return res.status(500).json({ error: err.message });
@@ -119,13 +155,18 @@ router.put('/playlists/:id', upload.single('photo'), (req, res) => {
     }
 });
 
-// NUEVO: Eliminar Playlist entera
 router.delete('/playlists/:id', (req, res) => {
     const playlistId = req.params.id;
-    // Primero borramos las canciones para evitar errores de clave foránea
+    
+    // Buscamos la foto para borrarla porque la playlist ya no existirá
+    db.query('SELECT photo_url FROM playlists WHERE id = ?', [playlistId], (err, results) => {
+        if (!err && results.length > 0) {
+            deleteOldFile(results[0].photo_url);
+        }
+    });
+
     db.query('DELETE FROM playlist_songs WHERE playlist_id = ?', [playlistId], (err) => {
         if (err) return res.status(500).json({ error: err.message });
-        // Luego borramos la lista en sí
         db.query('DELETE FROM playlists WHERE id = ?', [playlistId], (err) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ success: true });
@@ -201,20 +242,40 @@ router.post('/follow-artist', (req, res) => {
 // ============================================
 // 5. SISTEMA DE PUNTOS Y RECOMPENSAS
 // ============================================
+let dailyRewardsCache = { special: null, normals: [] };
+let lastRotationDate = null;
+
 router.get('/rewards', (req, res) => {
-    db.query('SELECT * FROM rewards', (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(results);
-    });
+    const today = new Date().toLocaleDateString('es-ES');
+
+    if (lastRotationDate !== today || !dailyRewardsCache.special) {
+        db.query('SELECT * FROM rewards', (err, results) => {
+            if (err) return res.status(500).json({ error: err.message });
+            
+            const specials = results.filter(r => r.is_special);
+            const normals = results.filter(r => !r.is_special);
+            
+            const shuffledSpecials = specials.sort(() => 0.5 - Math.random());
+            const shuffledNormals = normals.sort(() => 0.5 - Math.random());
+            
+            dailyRewardsCache = {
+                special: shuffledSpecials[0] || null,
+                normals: shuffledNormals.slice(0, 6)
+            };
+            
+            lastRotationDate = today;
+            res.json(dailyRewardsCache);
+        });
+    } else {
+        res.json(dailyRewardsCache);
+    }
 });
 
 router.get('/redeemed', (req, res) => {
     const spotifyId = req.headers['x-spotify-id'];
-    // CORREGIDO: Usamos red.redeemed_at que es como se llama en tu BBDD, no created_at
     db.query(`SELECT r.*, red.redeemed_at FROM redemptions red JOIN rewards r ON red.reward_id = r.id JOIN users u ON red.user_id = u.id WHERE u.spotify_id = ?`, 
     [spotifyId], (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
-        // Mapeamos para asegurarnos de que el frontend siempre tenga una fecha válida
         res.json(results.map(r => ({ ...r, redeemed_at: r.redeemed_at || new Date().toISOString() })));
     });
 });
@@ -231,7 +292,6 @@ router.post('/redeem', (req, res) => {
 
             db.query('UPDATE users SET points = points - ? WHERE id = ?', [cost, userId], (err) => {
                 if (err) return res.status(500).json({ error: err.message });
-                // CORREGIDO: Añadimos points_spent en el INSERT para que no salte el error de NOT NULL
                 db.query('INSERT INTO redemptions (user_id, reward_id, points_spent) VALUES (?, ?, ?)', 
                 [userId, rewardId, cost], (err) => {
                     if (err) return res.status(500).json({ error: err.message });

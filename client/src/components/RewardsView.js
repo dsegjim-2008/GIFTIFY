@@ -1,32 +1,74 @@
-import React from 'react';
-import { ShoppingBag, Star } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Gift, Clock, Star } from 'lucide-react';
+import './RewardsView.css'; 
 
 function RewardsView({ user, rewards, redeemReward }) {
+    const [timeLeft, setTimeLeft] = useState('');
+
+    // Lógica del reloj de cuenta atrás hasta medianoche
+    useEffect(() => {
+        const timer = setInterval(() => {
+            const now = new Date();
+            const midnight = new Date();
+            midnight.setHours(24, 0, 0, 0); // Siguiente medianoche
+            const diff = midnight - now;
+
+            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((diff % (1000 * 60)) / 1000);
+
+            setTimeLeft(`${h.toString().padStart(2, '0')}h ${m.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`);
+        }, 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    const specialReward = rewards?.special;
+    const normalRewards = rewards?.normals || [];
+
     return (
-        <div className="results-section">
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '20px'}}>
-                <h2><ShoppingBag size={24} style={{verticalAlign: 'middle', marginRight: '10px'}}/> Tienda de Recompensas</h2>
-                <div style={{background:'var(--card-bg)', padding:'10px 20px', borderRadius:'10px', border:'1px solid var(--border-color)'}}>
-                    <span style={{fontSize:'1.2rem', fontWeight:'bold', color:'var(--primary-yellow)'}}>
-                        <Star fill="currentColor" size={16}/> {user?.points || 0} pts
-                    </span>
+        <div className="rewards-wrapper">
+            <div className="rewards-header-flex">
+                <h2><Gift size={24} style={{verticalAlign: 'middle', marginRight: '10px'}} /> Tienda de Recompensas</h2>
+                <div className="countdown-timer">
+                    <Clock size={18} style={{marginRight: '6px'}} />
+                    Se actualiza en: <span>{timeLeft}</span>
                 </div>
             </div>
-            <div className="grid-container" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))'}}>
-                {rewards.map(reward => (
-                    <div key={reward.id} className="artist-card" style={{cursor: 'default', display: 'flex', flexDirection: 'column'}}>
-                        <img src={reward.photo_url} alt={reward.name} style={{width:'100%', height:'150px', objectFit:'cover', borderRadius: '8px', marginBottom: '10px'}} />
-                        <h3>{reward.name}</h3>
-                        <p style={{fontSize:'0.8rem', color:'var(--text-secondary)', flex: 1, marginBottom: '10px'}}>{reward.description}</p>
-                        <button 
-                            className="track-play-button" 
-                            style={{width:'100%', background: user?.points >= reward.point_cost ? 'var(--primary-cyan)' : '#333', cursor: user?.points >= reward.point_cost ? 'pointer' : 'not-allowed'}} 
-                            onClick={() => redeemReward(reward)}
-                        >
-                            Canjear ({reward.point_cost} pts)
-                        </button>
-                    </div>
-                ))}
+
+            <div className="shop-layout">
+                {/* LADO IZQUIERDO: EL REGALO ESPECIAL */}
+                <div className="shop-special-col">
+                    <div className="special-badge">⭐ DESTACADO DE HOY</div>
+                    {specialReward ? (
+                        <div className="reward-card special-card" onClick={() => redeemReward(specialReward)}>
+                            <img src={specialReward.photo_url || 'https://via.placeholder.com/400'} alt={specialReward.name} />
+                            <div className="reward-info">
+                                <h3>{specialReward.name}</h3>
+                                <p>{specialReward.description}</p>
+                                <button className="btn-redeem special-btn">
+                                    Canjear <Star size={14} fill="currentColor" style={{margin:'0 4px'}} /> {specialReward.point_cost} pts
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="reward-card special-card empty">No hay destacado hoy</div>
+                    )}
+                </div>
+
+                {/* LADO DERECHO: EL DADO DE 4 REGALOS */}
+                <div className="shop-normal-col">
+                    {normalRewards.map((reward, index) => (
+                        <div key={index} className="reward-card normal-card" onClick={() => redeemReward(reward)}>
+                            <img src={reward.photo_url || 'https://via.placeholder.com/200'} alt={reward.name} />
+                            <div className="reward-info">
+                                <h4>{reward.name}</h4>
+                                <button className="btn-redeem">
+                                    {reward.point_cost} pts
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );

@@ -1,0 +1,181 @@
+.rewards-wrapper {
+    padding: 20px;
+    height: 100%; /* Ocupa exactamente el alto disponible de la pantalla */
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Corta de raíz cualquier intento de hacer scroll */
+}
+
+.rewards-header-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    background: rgba(26, 31, 58, 0.4);
+    padding: 15px 25px;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 217, 255, 0.1);
+    flex-shrink: 0; /* Evita que la cabecera se encoja al ajustar la pantalla */
+}
+
+.countdown-timer {
+    display: flex;
+    align-items: center;
+    color: #FFD662;
+    font-size: 1.1rem;
+    font-weight: bold;
+    text-shadow: 0 0 10px rgba(255, 214, 98, 0.3);
+}
+
+.countdown-timer span {
+    font-family: monospace;
+    font-size: 1.3rem;
+    margin-left: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 4px 10px;
+    border-radius: 6px;
+}
+
+/* LA ESTRUCTURA DE LA TIENDA */
+.shop-layout {
+    display: flex;
+    gap: 32px; /* AUMENTADO: Más separación entre el regalo gigante y la cuadrícula */
+    flex-grow: 1; /* Ocupa el 100% del espacio que sobra bajo la cabecera */
+    min-height: 0; /* TRUCO CLAVE: Fuerza a Flexbox a no salirse de la pantalla */
+}
+
+.shop-special-col {
+    flex: 1; 
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    min-height: 0;
+}
+
+.shop-normal-col {
+    flex: 1.5; /* Le damos un poco más de ancho a esta mitad para que quepan 3 columnas bien */
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); 
+    grid-template-rows: repeat(2, 1fr);    
+    gap: 24px; /* AUMENTADO: Más margen entre los regalitos pequeños para hacerlos cuadrados */
+    min-height: 0; /* Hace que el grid obedezca los límites de la pantalla */
+}
+
+/* TARJETAS */
+.reward-card {
+    background: rgba(26, 31, 58, 0.6);
+    border: 1px solid rgba(0, 217, 255, 0.1);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* Hace que la tarjeta ocupe toda su celda */
+}
+
+.reward-card:hover {
+    transform: translateY(-5px);
+    border-color: rgba(0, 217, 255, 0.4);
+    box-shadow: 0 5px 15px rgba(0, 217, 255, 0.1);
+}
+
+/* ESTILOS DEL DESTACADO (GRANDE) */
+.special-badge {
+    position: absolute;
+    top: -10px;
+    left: 20px;
+    background: linear-gradient(90deg, #FFD662, #FF9B00);
+    color: #000;
+    font-weight: bold;
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    z-index: 10;
+    box-shadow: 0 4px 10px rgba(255, 214, 98, 0.4);
+}
+
+.special-card {
+    border: 2px solid #FFD662;
+    box-shadow: 0 0 15px rgba(255, 214, 98, 0.1);
+}
+
+.special-card img {
+    width: 100%;
+    flex: 1 1 auto; 
+    min-height: 0;  
+    object-fit: cover; /* Cambiado a cover para que no queden huecos */
+    background: rgba(0, 0, 0, 0.2); 
+    padding: 0; /* Quitamos el padding para que la foto toque los bordes */
+    box-sizing: border-box;
+}
+
+.special-card .reward-info {
+    padding: 20px 25px;
+    flex-shrink: 0; /* Impide que la zona de texto se aplaste */
+}
+
+.special-card h3 {
+    font-size: 1.4rem; /* Un pelín más pequeño para que encaje mejor */
+    margin-bottom: 8px;
+    color: #fff;
+}
+
+.special-card p {
+    color: #aaa;
+    margin-bottom: 15px;
+    font-size: 1rem;
+}
+
+.special-btn {
+    background: linear-gradient(90deg, #FFD662, #FF9B00) !important;
+    color: #000 !important;
+    font-size: 1.1rem !important;
+    padding: 10px !important;
+}
+
+/* ESTILOS DE LOS NORMALES (CUADRÍCULA) */
+.normal-card img {
+    width: 100%;
+    flex: 1 1 auto; 
+    min-height: 0; 
+    object-fit: cover; /* Llenará la caja completamente sin dejar márgenes */
+    background: rgba(0, 0, 0, 0.2); 
+    padding: 0; /* Quitamos el padding para que toque los bordes de la tarjeta */
+    box-sizing: border-box;
+}
+
+.normal-card .reward-info {
+    padding: 12px 15px;
+    flex-shrink: 0;
+}
+
+.normal-card h4 {
+    font-size: 1rem;
+    margin-bottom: 10px;
+    color: #eee;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; /* Pone "..." si el nombre es muy largo para una línea */
+}
+
+.btn-redeem {
+    width: 100%;
+    padding: 8px;
+    background: rgba(0, 217, 255, 0.1);
+    color: #00D9FF;
+    border: 1px solid #00D9FF;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: 0.2s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.reward-card:hover .btn-redeem {
+    background: #00D9FF;
+    color: #000;
+}

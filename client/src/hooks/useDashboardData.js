@@ -83,14 +83,53 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
     const handleSearch = (e) => { e.preventDefault(); if (searchQuery.trim()) setIsSearchOpen(true); };
     const clearSearch = () => { setSearchQuery(""); setSearchResults({ artists: [], tracks: [] }); setIsSearchOpen(false); setSelectedArtist(null); };
 
+    // --- MAGIA: SELECCIÓN DE ARTISTA INTELIGENTE ---
     const selectArtist = async (artist) => {
-        setIsSearchOpen(false); setSearchQuery(""); setSelectedArtist(artist); setSelectedAlbum(null);
-        setActiveTab('albums'); setView('inicio'); setLoading(true);
-        setIsFollowing(followedArtists.some(a => a.spotify_artist_id === artist.id));
+        setIsSearchOpen(false); 
+        setSearchQuery(""); 
+        setSelectedAlbum(null);
+        setSelectedPlaylist(null); // Limpiamos listas para forzar redirección
+        setSelectedDynamicList(null); 
+        setActiveTab('albums'); 
+        setView('inicio'); 
+        setLoading(true);
+
+        let finalArtistId = artist.id;
+        let finalArtistImage = artist.images && artist.images.length > 0 ? artist.images[0].url : null;
+
+        // Si isNaN es true, es un ID alfanumérico de Spotify. Necesitamos su ID de Deezer.
+        if (isNaN(artist.id)) {
+            try {
+                const searchRes = await axios.get(`http://127.0.0.1:3001/api/spotify/search?query=${encodeURIComponent(artist.name)}`, config);
+                const deezerArtists = searchRes.data.artists;
+                
+                if (deezerArtists && deezerArtists.length > 0) {
+                    const matched = deezerArtists.find(a => a.name.toLowerCase() === artist.name.toLowerCase()) || deezerArtists[0];
+                    finalArtistId = matched.id;
+                    finalArtistImage = matched.images?.[0]?.url || finalArtistImage;
+                }
+            } catch (e) {
+                console.error("Error resolviendo ID de Deezer:", e);
+            }
+        }
+
+        const resolvedArtist = {
+            id: finalArtistId,
+            name: artist.name,
+            images: finalArtistImage ? [{ url: finalArtistImage }] : []
+        };
+
+        setSelectedArtist(resolvedArtist);
+        setIsFollowing(followedArtists.some(a => a.spotify_artist_id === finalArtistId));
+
         try {
-            const res = await axios.get(`http://127.0.0.1:3001/api/spotify/artist-tracks?id=${artist.id}`, config);
-            setAlbums(res.data.albums || []); setEps(res.data.eps || []); setSingles(res.data.singles || []);
-        } catch (error) { console.error(error); }
+            const res = await axios.get(`http://127.0.0.1:3001/api/spotify/artist-tracks?id=${finalArtistId}`, config);
+            setAlbums(res.data.albums || []); 
+            setEps(res.data.eps || []); 
+            setSingles(res.data.singles || []);
+        } catch (error) { 
+            console.error(error); 
+        }
         setLoading(false);
     };
 
@@ -152,7 +191,6 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
         }
     };
 
-    // --- NUEVO: EDITAR PLAYLIST CON BOTÓN DE ELIMINAR ---
     const editPlaylist = async () => {
         const result = await Swal.fire({
             title: 'Editar Lista',
@@ -161,7 +199,7 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
                 `<input id="swal-input-file" type="file" class="swal2-file" style="background: rgba(26, 31, 58, 0.4); color: #ccc; border: 1px solid rgba(0, 217, 255, 0.1); width: 80%; font-size: 0.8rem;">`,
             focusConfirm: false,
             showCancelButton: true,
-            showDenyButton: true, // Esto activa el botón rojo extra
+            showDenyButton: true,
             confirmButtonText: 'Guardar',
             denyButtonText: 'Borrar Lista',
             cancelButtonText: 'Cancelar',
@@ -176,7 +214,6 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
             })
         });
 
-        // 1. Si el usuario pulsó el botón rojo de "Borrar Lista"
         if (result.isDenied) {
             const confirmDelete = await Swal.fire({
                 title: '¿Estás seguro?',
@@ -194,12 +231,11 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
                 try {
                     await axios.delete(`http://127.0.0.1:3001/api/users/playlists/${selectedPlaylist.id}`, config);
                     setMyPlaylists(prev => prev.filter(p => p.id !== selectedPlaylist.id));
-                    setSelectedPlaylist(null); // Limpiamos la vista actual
+                    setSelectedPlaylist(null); 
                     Swal.fire({ title: 'Lista Borrada', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, background: '#1a1f3a', color: '#fff' });
                 } catch(e) { console.error(e); }
             }
         } 
-        // 2. Si el usuario pulsó en "Guardar" cambios
         else if (result.isConfirmed && result.value) {
             try {
                 const formData = new FormData();
@@ -263,7 +299,6 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
         }
     };
 
-    // --- NUEVO: EDITAR PERFIL AVANZADO (FOTOS Y CONTRASEÑA) ---
     const editProfile = async () => {
         const result = await Swal.fire({
             title: 'Editar Perfil',
@@ -293,7 +328,6 @@ function useDashboardData(user, setUser, spotifyToken, spotifyId, view, setView)
                     headers: { ...config.headers, 'Content-Type': 'multipart/form-data' }
                 });
                 
-                // Pedimos de nuevo los datos del perfil para refrescar la foto nueva en pantalla
                 const freshUser = await axios.get('http://127.0.0.1:3001/api/users/profile', config);
                 setUser(freshUser.data);
 

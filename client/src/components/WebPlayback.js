@@ -9,7 +9,6 @@ const defaultTrack = {
     artists: [{ name: "Selecciona una canción" }]
 };
 
-// Añadimos playNext, playPrevious, toggleShuffle e isShuffle a las props
 function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId, setShowPlaylistModal, selectArtist, playNext, playPrevious, toggleShuffle, isShuffle }) {
     const [is_paused, setPaused] = useState(false);
     const [is_active, setActive] = useState(false);
@@ -22,7 +21,6 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId, setSh
     const scriptLoaded = useRef(false);
     const SPOTIFY_API = 'https://api.spotify.com/v1';
 
-    // 1. Inicialización del SDK de Spotify
     useEffect(() => {
         if (scriptLoaded.current) return;
         scriptLoaded.current = true;
@@ -59,13 +57,11 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId, setSh
         return () => { if (playerInstance) playerInstance.disconnect(); };
     }, [token]);
 
-    // 2. Lógica de Reproducción (ESTABLE: 1 Sola Canción)
     useEffect(() => {
         if (!deviceId || !trackUri) return;
         
         const playSong = async () => {
             try {
-                // Spotify vuelve a recibir solo uris simples, ¡así no se colapsa!
                 const body = typeof trackUri === 'string' && trackUri.includes('album') 
                     ? { context_uri: trackUri } 
                     : { uris: [trackUri] };
@@ -81,7 +77,6 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId, setSh
         playSong();
     }, [deviceId, trackUri, token]);
 
-    // 3. Sumar Puntos
     useEffect(() => {
         if (!is_active || is_paused || !spotifyId) return;
         const interval = setInterval(() => {
@@ -95,7 +90,6 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId, setSh
         return () => clearInterval(interval);
     }, [is_active, is_paused, playingArtist, setUser, token, spotifyId]);
 
-    // 4. Progreso de la barra de tiempo
     useEffect(() => {
         if (!is_paused && is_active) {
             const interval = setInterval(() => {
@@ -105,9 +99,6 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId, setSh
         }
     }, [is_paused, is_active, duration]);
 
-    // ==========================================
-    // FUNCIONES DE INTERACCIÓN
-    // ==========================================
     const formatTime = (ms) => {
         if (!ms) return "0:00";
         const m = Math.floor(ms / 60000);
@@ -127,13 +118,18 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId, setSh
         setShowPlaylistModal(trackData);
     };
 
-    const handleArtistClick = (artist) => {
-        if (!artist.uri || !selectArtist) return;
-        const artistId = artist.uri.split(':')[2];
+    // --- MAGIA: GESTIÓN DE CLIC ---
+    const handleArtistClick = (e, artist) => {
+        e.stopPropagation(); // Prevenimos colisiones con las listas tras el panel
+        if (!selectArtist) return;
+        
+        // Si la URI viene en blanco, cogemos el nombre y dejamos que el "Cerebro" lo resuelva
+        const artistId = artist.uri ? artist.uri.split(':')[2] : artist.name; 
+        
         selectArtist({
             id: artistId,
             name: artist.name,
-            images: [{ url: current_track.album.images[0]?.url }] 
+            images: [{ url: current_track?.album?.images[0]?.url }] 
         });
     };
 
@@ -153,7 +149,10 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId, setSh
                     <div className="player-artist-name">
                         {current_track.artists.map((artist, index) => (
                             <span key={index}>
-                                <span className="clickable-artist" onClick={() => handleArtistClick(artist)}>
+                                <span 
+                                    className="clickable-artist" 
+                                    onClick={(e) => handleArtistClick(e, artist)}
+                                >
                                     {artist.name}
                                 </span>
                                 {index < current_track.artists.length - 1 ? ', ' : ''}
@@ -165,7 +164,6 @@ function WebPlayback({ token, trackUri, playingArtist, setUser, spotifyId, setSh
 
             <div className="player-controls">
                 <div className="player-buttons">
-                    {/* Botones conectados a las funciones de React */}
                     <button className="btn-control btn-side" onClick={toggleShuffle} title="Aleatorio">
                         <Shuffle size={20} color={isShuffle ? '#1DB954' : 'currentColor'} />
                     </button>
